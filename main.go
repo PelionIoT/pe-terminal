@@ -72,7 +72,6 @@ func main() {
 	}
 	tunnel.OnError = func(err error) {
 		log.Println("->onError() ", err)
-		os.Exit(1)
 	}
 	// Start tunnel-connection
 	tunnel.StartTunnel()

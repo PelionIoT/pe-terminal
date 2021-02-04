@@ -3,7 +3,7 @@ package components
 import (
 	"encoding/json"
 	"log"
-	"os"
+	"time"
 
 	"github.com/sacOO7/gowebsocket"
 )
@@ -56,12 +56,13 @@ func convertToJSON(envelope messageEnvelope) (string, error) {
 // structure of the tunnel and all the
 // available callbacks
 type SocketTunnel struct {
-	socket   gowebsocket.Socket
-	OnError  func(err error)
-	OnStart  func(sessionID string)
-	OnEnd    func(sessionID string)
-	OnInput  func(sessionID string, payload string)
-	OnResize func(sessionID string, payload string)
+	socket        gowebsocket.Socket
+	reconnectWait int
+	OnError       func(err error)
+	OnStart       func(sessionID string)
+	OnEnd         func(sessionID string)
+	OnInput       func(sessionID string, payload string)
+	OnResize      func(sessionID string, payload string)
 }
 
 // NewTunnel returns a new instance of
@@ -69,7 +70,8 @@ type SocketTunnel struct {
 // initialized with a connection URL
 func NewTunnel(url string) SocketTunnel {
 	return SocketTunnel{
-		socket: gowebsocket.New(url),
+		socket:        gowebsocket.New(url),
+		reconnectWait: 0,
 	}
 }
 
@@ -87,10 +89,12 @@ func (tunnel *SocketTunnel) StartTunnel() {
 	// only few of them are exposed, rest are handled internally
 	tunnel.socket.OnConnected = func(socket gowebsocket.Socket) {
 		log.Printf("Tunnel connected at: %s\n", socket.Url)
+		tunnel.reconnectWait = 0
 	}
 	tunnel.socket.OnDisconnected = func(err error, socket gowebsocket.Socket) {
 		log.Println("Tunnel disconnected")
 		tunnel.OnError(err)
+		handleConnection(tunnel)
 	}
 	tunnel.socket.OnConnectError = func(err error, socket gowebsocket.Socket) {
 		tunnel.OnError(err)
@@ -119,13 +123,24 @@ func (tunnel *SocketTunnel) StartTunnel() {
 		}
 	}
 
+	handleConnection(tunnel)
+}
+
+func handleConnection(tunnel *SocketTunnel) {
+	// Setup the reconnect timeout
+	if tunnel.reconnectWait == 0 {
+		tunnel.reconnectWait = 1
+	} else if tunnel.reconnectWait < 32 {
+		tunnel.reconnectWait *= 2
+	}
 	// Socket connection can generate panic sometimes
-	// trying for a graceful shutdown
+	// trying for a graceful reconnect
 	defer func() {
 		if err := recover(); err != nil {
 			log.Println(err)
-			log.Println("Application cannot continue, exiting")
-			os.Exit(1)
+			log.Printf("Tunnel is attempting to establish connection in %v seconds...", tunnel.reconnectWait)
+			time.Sleep(time.Duration(tunnel.reconnectWait) * time.Second)
+			handleConnection(tunnel)
 		}
 	}()
 	// Connect to socket
