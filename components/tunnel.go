@@ -21,6 +21,11 @@ type messageEnvelope struct {
 	SessionID string `json:"sessionID"`
 }
 
+type resizeEnvelope struct {
+	Width  uint16 `json:"width"`
+	Height uint16 `json:"height"`
+}
+
 // Envelope-types which will be
 // used to parse the respective
 // messageEnvelope
@@ -46,6 +51,12 @@ func convertToEnvelope(data string) (messageEnvelope, error) {
 	return message, err
 }
 
+func convertToResizeEnvelope(data string) (resizeEnvelope, error) {
+	message := resizeEnvelope{}
+	err := json.Unmarshal([]byte(data), &message)
+	return message, err
+}
+
 // Converts the messageEnvelope to JSON formatted string
 func convertToJSON(envelope messageEnvelope) (string, error) {
 	json, err := json.Marshal(envelope)
@@ -62,7 +73,7 @@ type SocketTunnel struct {
 	OnStart       func(sessionID string)
 	OnEnd         func(sessionID string)
 	OnInput       func(sessionID string, payload string)
-	OnResize      func(sessionID string, payload string)
+	OnResize      func(sessionID string, width uint16, height uint16)
 }
 
 // NewTunnel returns a new instance of
@@ -112,7 +123,11 @@ func (tunnel *SocketTunnel) StartTunnel() {
 			case typeInput:
 				tunnel.OnInput(parsedMessageEnvelope.SessionID, parsedMessageEnvelope.Payload)
 			case typeResize:
-				tunnel.OnResize(parsedMessageEnvelope.SessionID, parsedMessageEnvelope.Payload)
+				if pResizeEnvelope, err := convertToResizeEnvelope(parsedMessageEnvelope.Payload); err != nil {
+					log.Printf("Ignoring message. Resize object format invalid,\n%s", message)
+				} else {
+					tunnel.OnResize(parsedMessageEnvelope.SessionID, pResizeEnvelope.Width, pResizeEnvelope.Height)
+				}
 			case typeStart:
 				tunnel.OnStart(parsedMessageEnvelope.SessionID)
 			case typeEnd:

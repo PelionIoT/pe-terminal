@@ -67,8 +67,11 @@ func main() {
 			sessionsMap[sessionID].Write(payload)
 		}
 	}
-	tunnel.OnResize = func(sessionID string, payload string) {
-		log.Printf("->onResize() sessionID: %s, payload: %s\n", sessionID, payload)
+	tunnel.OnResize = func(sessionID string, width uint16, height uint16) {
+		if _, ok := sessionsMap[sessionID]; ok {
+			log.Printf("Resize terminal w: %v, h: %v from %s\n", width, height, sessionID)
+			sessionsMap[sessionID].Resize(width, height)
+		}
 	}
 	tunnel.OnError = func(err error) {
 		log.Println("->onError() ", err)

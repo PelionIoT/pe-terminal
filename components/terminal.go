@@ -109,8 +109,12 @@ func (term *Terminal) SetReadTimeout(timeout int64) {
 }
 
 // Resize is yet to be implemented
-func (term *Terminal) Resize(width int, height int) {
+func (term *Terminal) Resize(width uint16, height uint16) {
 	log.Printf("->Resize() width: %v, height: %v\n", width, height)
+	termSize := pty.Winsize{Y: height, X: width} // X is width, Y is height
+	if err := pty.Setsize(term.pty, &termSize); err != nil {
+		log.Println(err)
+	}
 }
 
 // Close is used to terminate the pty-session
