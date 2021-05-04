@@ -17,9 +17,12 @@ import (
 func main() {
 	var host string
 	var port string
+	var endpoint string
 
 	flag.StringVar(&host, "host", "127.0.0.1", "Host address of terminal service")
 	flag.StringVar(&port, "port", "3000", "Port number of terminal service")
+	flag.StringVar(&endpoint, "endpoint", "/", "Endpoint to access terminal service")
+
 	flag.Parse()
 
 	log.Println("=====[ Pelion Edge Terminal ]=====")
@@ -28,7 +31,7 @@ func main() {
 	signal.Notify(interrupt, os.Interrupt)
 
 	sessionsMap := make(map[string]*components.Terminal)
-	tunnelURL := "ws://" + string(host+":"+port) + "/terminal"
+	tunnelURL := "ws://" + string(host+":"+port+endpoint)
 
 	// Setup tunnel-connection
 	tunnel := components.NewTunnel(tunnelURL)
