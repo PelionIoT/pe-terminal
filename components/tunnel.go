@@ -21,7 +21,13 @@ type messageEnvelope struct {
 	SessionID string `json:"sessionID"`
 }
 
-type resizeEnvelope struct {
+type resizeMessageEnvelope struct {
+	Type      string       `json:"type"`
+	Payload   sizeEnvelope `json:"payload"`
+	SessionID string       `json:"sessionID"`
+}
+
+type sizeEnvelope struct {
 	Width  uint16 `json:"width"`
 	Height uint16 `json:"height"`
 }
@@ -51,8 +57,14 @@ func convertToEnvelope(data string) (messageEnvelope, error) {
 	return message, err
 }
 
-func convertToResizeEnvelope(data string) (resizeEnvelope, error) {
-	message := resizeEnvelope{}
+func convertToResizeMessageEnvelope(data string) (resizeMessageEnvelope, error) {
+	message := resizeMessageEnvelope{}
+	err := json.Unmarshal([]byte(data), &message)
+	return message, err
+}
+
+func convertToSizeEnvelope(data string) (sizeEnvelope, error) {
+	message := sizeEnvelope{}
 	err := json.Unmarshal([]byte(data), &message)
 	return message, err
 }
@@ -116,22 +128,25 @@ func (tunnel *SocketTunnel) StartTunnel() {
 			return
 		}
 		// Convert message to MessageEnvelope
-		if parsedMessageEnvelope, err := convertToEnvelope(message); err != nil {
-			log.Printf("Ignoring message. Object format invalid,\n%s", message)
-		} else {
-			switch parsedMessageEnvelope.Type {
-			case typeInput:
-				tunnel.OnInput(parsedMessageEnvelope.SessionID, parsedMessageEnvelope.Payload)
-			case typeResize:
-				if pResizeEnvelope, err := convertToResizeEnvelope(parsedMessageEnvelope.Payload); err != nil {
-					log.Printf("Ignoring message. Resize object format invalid,\n%s", message)
+		if messageEnvelope, err := convertToEnvelope(message); err != nil {
+			// Convert message to ResizeMessageEnvelope
+			if resizeMessageEnvelope, err := convertToResizeMessageEnvelope(message); err != nil {
+				log.Printf("Ignoring message. Object format invalid,\n%s", message)
+			} else {
+				if resizeMessageEnvelope.Type == typeResize {
+					tunnel.OnResize(messageEnvelope.SessionID, resizeMessageEnvelope.Payload.Width, resizeMessageEnvelope.Payload.Height)
 				} else {
-					tunnel.OnResize(parsedMessageEnvelope.SessionID, pResizeEnvelope.Width, pResizeEnvelope.Height)
+					log.Printf("Ignoring message. Resize object format invalid,\n%s", message)
 				}
+			}
+		} else {
+			switch messageEnvelope.Type {
+			case typeInput:
+				tunnel.OnInput(messageEnvelope.SessionID, messageEnvelope.Payload)
 			case typeStart:
-				tunnel.OnStart(parsedMessageEnvelope.SessionID)
+				tunnel.OnStart(messageEnvelope.SessionID)
 			case typeEnd:
-				tunnel.OnEnd(parsedMessageEnvelope.SessionID)
+				tunnel.OnEnd(messageEnvelope.SessionID)
 			default:
 				log.Printf("Ignoring message. Object type invalid,\n%s", message)
 			}

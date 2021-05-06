@@ -21,3 +21,7 @@ How to
     ```bash
     ./make remove
     ```
+ * **Describe:** To view info about generated binary, do:
+    ```bash
+    ./make describe
+    ```
