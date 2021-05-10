@@ -1,10 +1,12 @@
 package main
 
 import (
+	"bytes"
 	"flag"
 	"log"
 	"os"
 	"os/signal"
+	"strings"
 
 	"github.com/PelionIoT/pe-terminal/components"
 )
@@ -18,6 +20,7 @@ func main() {
 	var host string
 	var port string
 	var endpoint string
+	var commandBuffer bytes.Buffer
 
 	flag.StringVar(&host, "host", "127.0.0.1", "Host address of terminal service")
 	flag.StringVar(&port, "port", "3000", "Port number of terminal service")
@@ -41,10 +44,10 @@ func main() {
 		if err != nil {
 			log.Println(err)
 		}
-		term.SetReadTimeout(2)
+		term.SetReadTimeout(1)
 		term.OnData = func(output string) {
 			log.Printf("->onData() %s\n", output)
-			tunnel.Send(sessionID, output)
+			tunnel.Send(sessionID, string(components.EnterWithNewLine+output))
 		}
 		term.OnError = func(err error) {
 			log.Printf("->onError() %v", err)
@@ -66,14 +69,31 @@ func main() {
 	}
 	tunnel.OnInput = func(sessionID string, payload string) {
 		if _, ok := sessionsMap[sessionID]; ok {
-			log.Printf("Received command: %s from %s\n", payload, sessionID)
-			sessionsMap[sessionID].Write(payload)
+			tunnel.Send(sessionID, payload)
+			log.Printf("Received payload: %q from %s\n", payload, sessionID)
+			commandBuffer.WriteString(payload)
+			if strings.Contains(payload, components.Enter) { // Execute on ENTER
+				fullCommand := commandBuffer.String()
+				log.Printf("Completed command: %s\n", fullCommand)
+				if strings.Contains(fullCommand, components.IsClearScreen) {
+					log.Println("Clearing terminal screen")
+					tunnel.Send(sessionID, components.ClearScreen)
+				} else {
+					sessionsMap[sessionID].Write(fullCommand)
+				}
+				sessionsMap[sessionID].Write(components.Enter)
+				commandBuffer.Reset()
+			} else if strings.Contains(payload, components.IsBackspaceKey) { // Execute on BACKSPACE
+				log.Println("Backspace is pressed")
+				tunnel.Send(sessionID, components.Backspace)
+			}
 		}
 	}
 	tunnel.OnResize = func(sessionID string, width uint16, height uint16) {
 		if _, ok := sessionsMap[sessionID]; ok {
 			log.Printf("Resize terminal w: %v, h: %v from %s\n", width, height, sessionID)
 			sessionsMap[sessionID].Resize(width, height)
+			sessionsMap[sessionID].Write(components.Enter)
 		}
 	}
 	tunnel.OnError = func(err error) {

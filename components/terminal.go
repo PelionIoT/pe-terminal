@@ -31,6 +31,17 @@ type Terminal struct {
 // pty file [ /dev/ptmx ]
 var broadcast = make(chan string)
 
+// These constants are used to identify which
+// command/keystroke is received from remote
+const (
+	Enter            = "\r"
+	EnterWithNewLine = "\r\n"
+	IsClearScreen    = "clear"
+	ClearScreen      = "\033c"
+	IsBackspaceKey   = "\u007f"
+	Backspace        = "\b \b"
+)
+
 // NewTerminal will return a new instance of Terminal
 // and attaches a pty to it, [ /dev/ptmx ] with a bash-shell
 // and starts a watcher-service which monitors the pty
@@ -53,7 +64,7 @@ func NewTerminal() (Terminal, error) {
 // Writes a command to the pty
 func (term *Terminal) Write(command string) {
 	log.Printf("->Write() command: %s", command)
-	if _, err := term.pty.Write([]byte(string(command + "\r"))); err != nil {
+	if _, err := term.pty.Write([]byte(string(command))); err != nil {
 		//log.Println(err)
 		if term.OnError != nil {
 			term.OnError(err)
