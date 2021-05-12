@@ -5,6 +5,7 @@ import (
 	"log"
 	"os"
 	"os/exec"
+	"strings"
 	"time"
 
 	"github.com/creack/pty"
@@ -31,6 +32,9 @@ type Terminal struct {
 // pty file [ /dev/ptmx ]
 var broadcast = make(chan string)
 
+// Cache the recently executed command
+var lastCommand string = "#"
+
 // These constants are used to identify which
 // command/keystroke is received from remote
 const (
@@ -40,6 +44,15 @@ const (
 	ClearScreen      = "\033c"
 	IsBackspaceKey   = "\u007f"
 	Backspace        = "\b \b"
+	CtrlC            = "\x03"
+	CtrlX            = "\x18"
+	CtrlZ            = "\x1a"
+	EscKey           = "\x1b"
+	ArrowKeyUp       = "\x1b[A"
+	ArrowKeyDown     = "\x1b[B"
+	ArrowKeyLeft     = "\x1b[D"
+	ArrowKeyRight    = "\x1b[C"
+	Space            = " "
 )
 
 // NewTerminal will return a new instance of Terminal
@@ -63,7 +76,11 @@ func NewTerminal() (Terminal, error) {
 
 // Writes a command to the pty
 func (term *Terminal) Write(command string) {
-	log.Printf("->Write() command: %s", command)
+	if len(command) > 2 { // Strip-out space, backspace, enter keystroke characters
+		lastCommand = strings.TrimRight(command, string(Space+IsBackspaceKey+Enter))
+		log.Printf("->Write() lastCommand set to: %q", lastCommand)
+	}
+	log.Printf("->Write() execute command: %q", command)
 	if _, err := term.pty.Write([]byte(string(command))); err != nil {
 		//log.Println(err)
 		if term.OnError != nil {
@@ -97,7 +114,7 @@ func (term *Terminal) processResponse() {
 		select {
 		case data := <-broadcast:
 			//log.Println("->onTerminal()", data)
-			if term.OnData != nil {
+			if term.OnData != nil && !strings.HasSuffix(strings.TrimSpace(data), lastCommand) { // Avoid reprinting the prompt again
 				term.OnData(data)
 			}
 			if term.OnClose != nil {

@@ -20,7 +20,6 @@ func main() {
 	var host string
 	var port string
 	var endpoint string
-	var commandBuffer bytes.Buffer
 
 	flag.StringVar(&host, "host", "127.0.0.1", "Host address of terminal service")
 	flag.StringVar(&port, "port", "3000", "Port number of terminal service")
@@ -34,6 +33,7 @@ func main() {
 	signal.Notify(interrupt, os.Interrupt)
 
 	sessionsMap := make(map[string]*components.Terminal)
+	commandsBufferMap := make(map[string]*bytes.Buffer)
 	tunnelURL := "ws://" + string(host+":"+port+endpoint)
 
 	// Setup tunnel-connection
@@ -54,11 +54,13 @@ func main() {
 		}
 		term.OnClose = func() {
 			delete(sessionsMap, sessionID)
+			delete(commandsBufferMap, sessionID)
 			log.Printf("Terminal %s exited. Notifying cloud that this session is terminated.\n", sessionID)
 			tunnel.End(sessionID)
 		}
 
 		sessionsMap[sessionID] = &term
+		commandsBufferMap[sessionID] = &bytes.Buffer{}
 		log.Printf("New session. Terminal %s created.\n", sessionID)
 	}
 	tunnel.OnEnd = func(sessionID string) {
@@ -71,21 +73,34 @@ func main() {
 		if _, ok := sessionsMap[sessionID]; ok {
 			tunnel.Send(sessionID, payload)
 			log.Printf("Received payload: %q from %s\n", payload, sessionID)
-			commandBuffer.WriteString(payload)
+			commandsBufferMap[sessionID].WriteString(payload)
 			if strings.Contains(payload, components.Enter) { // Execute on ENTER
-				fullCommand := commandBuffer.String()
-				log.Printf("Completed command: %s\n", fullCommand)
+				fullCommand := commandsBufferMap[sessionID].String()
 				if strings.Contains(fullCommand, components.IsClearScreen) {
 					log.Println("Clearing terminal screen")
 					tunnel.Send(sessionID, components.ClearScreen)
 				} else {
 					sessionsMap[sessionID].Write(fullCommand)
 				}
-				sessionsMap[sessionID].Write(components.Enter)
-				commandBuffer.Reset()
+				if _, ok := sessionsMap[sessionID]; ok { // Need to check this again, as session could be terminated by now.
+					sessionsMap[sessionID].Write(components.Enter)
+					commandsBufferMap[sessionID].Reset()
+				}
 			} else if strings.Contains(payload, components.IsBackspaceKey) { // Execute on BACKSPACE
 				log.Println("Backspace is pressed")
 				tunnel.Send(sessionID, components.Backspace)
+			} else if strings.Contains(payload, components.CtrlC) { // Execute on Control + C
+				log.Println("Ctrl+C is pressed")
+				sessionsMap[sessionID].Write(components.CtrlC + components.Enter)
+			} else if strings.Contains(payload, components.CtrlX) { // Execute on Control + X
+				log.Println("Ctrl+X is pressed")
+				sessionsMap[sessionID].Write(components.CtrlX + components.Enter)
+			} else if strings.Contains(payload, components.CtrlZ) { // Execute on Control + Z
+				log.Println("Ctrl+Z is pressed")
+				sessionsMap[sessionID].Write(components.CtrlZ + components.Enter)
+			} else if strings.Contains(payload, components.EscKey) { // Execute on ESC
+				log.Println("Esc is pressed")
+				sessionsMap[sessionID].Write(components.EscKey + components.Enter)
 			}
 		}
 	}
