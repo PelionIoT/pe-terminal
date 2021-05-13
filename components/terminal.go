@@ -33,7 +33,7 @@ type Terminal struct {
 var broadcast = make(chan string)
 
 // Cache the recently executed command
-var lastCommand string = "#"
+var lastCommand string = "+"
 
 // These constants are used to identify which
 // command/keystroke is received from remote
@@ -53,6 +53,7 @@ const (
 	ArrowKeyLeft     = "\x1b[D"
 	ArrowKeyRight    = "\x1b[C"
 	Space            = " "
+	ExitSession      = "exit"
 )
 
 // NewTerminal will return a new instance of Terminal

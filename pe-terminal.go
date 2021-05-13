@@ -66,7 +66,7 @@ func main() {
 	tunnel.OnEnd = func(sessionID string) {
 		if _, ok := sessionsMap[sessionID]; ok {
 			log.Printf("Session ended. Killing terminal %s\n", sessionID)
-			sessionsMap[sessionID].Write("exit")
+			sessionsMap[sessionID].Write(string(components.ExitSession + components.Enter))
 		}
 	}
 	tunnel.OnInput = func(sessionID string, payload string) {
@@ -79,10 +79,13 @@ func main() {
 				if strings.Contains(fullCommand, components.IsClearScreen) {
 					log.Println("Clearing terminal screen")
 					tunnel.Send(sessionID, components.ClearScreen)
+					sessionsMap[sessionID].Write(components.Enter)
+					commandsBufferMap[sessionID].Reset()
+				} else if strings.Contains(fullCommand, components.ExitSession) {
+					log.Println("Ending session, Killing terminal.")
+					sessionsMap[sessionID].Write(fullCommand)
 				} else {
 					sessionsMap[sessionID].Write(fullCommand)
-				}
-				if _, ok := sessionsMap[sessionID]; ok { // Need to check this again, as session could be terminated by now.
 					sessionsMap[sessionID].Write(components.Enter)
 					commandsBufferMap[sessionID].Reset()
 				}
