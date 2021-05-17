@@ -47,7 +47,14 @@ func main() {
 		term.SetReadTimeout(1)
 		term.OnData = func(output string) {
 			log.Printf("->onData() %s\n", output)
-			tunnel.Send(sessionID, string(components.EnterWithNewLine+output))
+			if _, ok := sessionsMap[sessionID]; ok {
+				if sessionsMap[sessionID].IsPromptReady() {
+					tunnel.Send(sessionID, components.EnterWithNewLine)
+				} else {
+					sessionsMap[sessionID].SetPromptReady()
+				}
+				tunnel.Send(sessionID, output)
+			}
 		}
 		term.OnError = func(err error) {
 			log.Printf("->onError() %v", err)
@@ -62,6 +69,7 @@ func main() {
 		sessionsMap[sessionID] = &term
 		commandsBufferMap[sessionID] = &bytes.Buffer{}
 		log.Printf("New session. Terminal %s created.\n", sessionID)
+		sessionsMap[sessionID].InitPrompt()
 	}
 	tunnel.OnEnd = func(sessionID string) {
 		if _, ok := sessionsMap[sessionID]; ok {
@@ -71,7 +79,10 @@ func main() {
 	}
 	tunnel.OnInput = func(sessionID string, payload string) {
 		if _, ok := sessionsMap[sessionID]; ok {
-			tunnel.Send(sessionID, payload)
+			if payload != components.Enter {
+				// Remove [ '\r' ] ENTER from payload while sending back
+				tunnel.Send(sessionID, strings.Replace(payload, components.Enter, components.Empty, -1))
+			}
 			log.Printf("Received payload: %q from %s\n", payload, sessionID)
 			commandsBufferMap[sessionID].WriteString(payload)
 			if strings.Contains(payload, components.Enter) { // Execute on ENTER
@@ -86,7 +97,9 @@ func main() {
 					sessionsMap[sessionID].Write(fullCommand)
 				} else {
 					sessionsMap[sessionID].Write(fullCommand)
-					sessionsMap[sessionID].Write(components.Enter)
+					if fullCommand != components.Enter { // To re-print the shell-prompt after command execution
+						sessionsMap[sessionID].Write(components.Enter)
+					}
 					commandsBufferMap[sessionID].Reset()
 				}
 			} else if strings.Contains(payload, components.IsBackspaceKey) { // Execute on BACKSPACE
@@ -111,7 +124,6 @@ func main() {
 		if _, ok := sessionsMap[sessionID]; ok {
 			log.Printf("Resize terminal w: %v, h: %v from %s\n", width, height, sessionID)
 			sessionsMap[sessionID].Resize(width, height)
-			sessionsMap[sessionID].Write(components.Enter)
 		}
 	}
 	tunnel.OnError = func(err error) {

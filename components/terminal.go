@@ -20,20 +20,19 @@ import (
 // structure for the terminal and
 // all the available callbacks
 type Terminal struct {
-	pty         *os.File
-	readTimeout int64
-	OnData      func(output string)
-	OnError     func(err error)
-	OnClose     func()
+	pty           *os.File
+	readTimeout   int64
+	isPromptReady bool
+	lastCommand   string
+	OnData        func(output string)
+	OnError       func(err error)
+	OnClose       func()
 }
 
 // This channel is used to send
 // stream of data read from the
 // pty file [ /dev/ptmx ]
 var broadcast = make(chan string)
-
-// Cache the recently executed command
-var lastCommand string = "+"
 
 // These constants are used to identify which
 // command/keystroke is received from remote
@@ -53,6 +52,7 @@ const (
 	ArrowKeyLeft     = "\x1b[D"
 	ArrowKeyRight    = "\x1b[C"
 	Space            = " "
+	Empty            = ""
 	ExitSession      = "exit"
 )
 
@@ -70,6 +70,8 @@ func NewTerminal() (Terminal, error) {
 	pty, err := pty.Start(c)
 	if err == nil {
 		term.pty = pty
+		term.isPromptReady = false
+		term.lastCommand = "+"
 		go watchPty(term.pty) // watcher-service
 	}
 	return term, err
@@ -78,8 +80,8 @@ func NewTerminal() (Terminal, error) {
 // Writes a command to the pty
 func (term *Terminal) Write(command string) {
 	if len(command) > 2 { // Strip-out space, backspace, enter keystroke characters
-		lastCommand = strings.TrimRight(command, string(Space+IsBackspaceKey+Enter))
-		log.Printf("->Write() lastCommand set to: %q", lastCommand)
+		term.lastCommand = strings.TrimRight(command, string(Space+IsBackspaceKey+Enter))
+		log.Printf("->Write() lastCommand set to: %q", term.lastCommand)
 	}
 	log.Printf("->Write() execute command: %q", command)
 	if _, err := term.pty.Write([]byte(string(command))); err != nil {
@@ -115,7 +117,7 @@ func (term *Terminal) processResponse() {
 		select {
 		case data := <-broadcast:
 			//log.Println("->onTerminal()", data)
-			if term.OnData != nil && !strings.HasSuffix(strings.TrimSpace(data), lastCommand) { // Avoid reprinting the prompt again
+			if term.OnData != nil && !strings.HasSuffix(strings.TrimSpace(data), term.lastCommand) { // Avoid reprinting the prompt again
 				term.OnData(data)
 			}
 			if term.OnClose != nil {
@@ -135,6 +137,26 @@ func (term *Terminal) processResponse() {
 // for the read to occurr from pty before next write operation
 func (term *Terminal) SetReadTimeout(timeout int64) {
 	term.readTimeout = timeout
+}
+
+// Initializes prompt after some delay
+func (term *Terminal) InitPrompt() {
+	time.AfterFunc(5*time.Second, func() { // 5 seconds seems stable
+		log.Println("Initializing new shell-prompt")
+		term.Write(Enter)
+	})
+}
+
+// IsPromptReady can be used to check whether
+// a shell-prompt is initialized yet or not
+func (term *Terminal) IsPromptReady() bool {
+	return term.isPromptReady
+}
+
+// SetPromptReady can be used to set status
+// of IsPromptReady() to true
+func (term *Terminal) SetPromptReady() {
+	term.isPromptReady = true
 }
 
 // Resize is yet to be implemented
