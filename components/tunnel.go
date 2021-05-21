@@ -3,6 +3,8 @@ package components
 import (
 	"encoding/json"
 	"log"
+	"reflect"
+	"strings"
 	"time"
 
 	"github.com/sacOO7/gowebsocket"
@@ -13,71 +15,30 @@ import (
  * @author github.com/adwardstark
  */
 
-// Base-level structure of a JSON message
-// travelling through the tunnel
-type messageEnvelope struct {
-	Type      string `json:"type"`
-	Payload   string `json:"payload"`
-	SessionID string `json:"sessionID"`
+// Envelope defines the structure of
+// a JSON message travelling through the tunnel
+type envelope struct {
+	Type      string      `json:"type"`
+	SessionID string      `json:"sessionID"`
+	Payload   interface{} `json:"payload"`
 }
 
-type resizeMessageEnvelope struct {
-	Type      string       `json:"type"`
-	Payload   sizeEnvelope `json:"payload"`
-	SessionID string       `json:"sessionID"`
-}
-
-type sizeEnvelope struct {
-	Width  uint16 `json:"width"`
-	Height uint16 `json:"height"`
-}
-
-// Envelope-types which will be
-// used to parse the respective
-// messageEnvelope
 const (
-	typeInput  = "input"
-	typeOutput = "output"
-	typeResize = "resize"
-	typeStart  = "start"
-	typeEnd    = "end"
+	typeInput              = "input"
+	typeOutput             = "output"
+	typeResize             = "resize"
+	typeStart              = "start"
+	typeEnd                = "end"
+	errInvalidEnvelope     = "Data could not be parsed as JSON"
+	errInvalidObjectFormat = "Object format invalid"
 )
 
-// Checks if the given string
-// is in a valid JSON format
 func isValidJSON(s string) bool {
 	var js map[string]interface{}
 	return json.Unmarshal([]byte(s), &js) == nil
 }
 
-// Converts the JSON string to messageEnvelope
-func convertToEnvelope(data string) (messageEnvelope, error) {
-	message := messageEnvelope{}
-	err := json.Unmarshal([]byte(data), &message)
-	return message, err
-}
-
-func convertToResizeMessageEnvelope(data string) (resizeMessageEnvelope, error) {
-	message := resizeMessageEnvelope{}
-	err := json.Unmarshal([]byte(data), &message)
-	return message, err
-}
-
-func convertToSizeEnvelope(data string) (sizeEnvelope, error) {
-	message := sizeEnvelope{}
-	err := json.Unmarshal([]byte(data), &message)
-	return message, err
-}
-
-// Converts the messageEnvelope to JSON formatted string
-func convertToJSON(envelope messageEnvelope) (string, error) {
-	json, err := json.Marshal(envelope)
-	return string(json), err
-}
-
-// SocketTunnel defines the base-level
-// structure of the tunnel and all the
-// available callbacks
+// SocketTunnel defines structure of the tunnel and callbacks
 type SocketTunnel struct {
 	socket        gowebsocket.Socket
 	reconnectWait int
@@ -85,34 +46,27 @@ type SocketTunnel struct {
 	OnStart       func(sessionID string)
 	OnEnd         func(sessionID string)
 	OnInput       func(sessionID string, payload string)
-	OnResize      func(sessionID string, width uint16, height uint16)
+	OnResize      func(sessionID string, width int64, height int64)
 }
 
-// NewTunnel returns a new instance of
-// SocketTunnel with a web-socket
-// initialized with a connection URL
+// NewTunnel returns a new instance of SocketTunnel
 func NewTunnel(url string) SocketTunnel {
 	return SocketTunnel{
 		socket:        gowebsocket.New(url),
-		reconnectWait: 0,
+		reconnectWait: 1,
 	}
 }
 
-// StartTunnel setups the necessary callbacks
-// to monitor and results between different states
-// and starts the connection through websocket
+// StartTunnel will register callbacks and start connection
 func (tunnel *SocketTunnel) StartTunnel() {
-	// Setup options
 	tunnel.socket.ConnectionOptions = gowebsocket.ConnectionOptions{
 		UseSSL:         false, // Don't use SSL
 		UseCompression: false, // Don't use compression
 	}
-	// Setup callback listeners for the socket connection
-	// not all of them are available for external access
-	// only few of them are exposed, rest are handled internally
+
 	tunnel.socket.OnConnected = func(socket gowebsocket.Socket) {
 		log.Printf("Tunnel connected at: %s\n", socket.Url)
-		tunnel.reconnectWait = 0
+		tunnel.reconnectWait = 1
 	}
 	tunnel.socket.OnDisconnected = func(err error, socket gowebsocket.Socket) {
 		log.Println("Tunnel disconnected")
@@ -124,32 +78,76 @@ func (tunnel *SocketTunnel) StartTunnel() {
 	}
 	tunnel.socket.OnTextMessage = func(message string, socket gowebsocket.Socket) {
 		if ok := isValidJSON(message); !ok {
-			log.Printf("Ignoring message. Data could not be parsed as JSON,\n%s", message)
+			log.Printf("%s,\n%s", errInvalidEnvelope, message)
 			return
 		}
-		// Convert message to MessageEnvelope
-		if messageEnvelope, err := convertToEnvelope(message); err != nil {
-			// Convert message to ResizeMessageEnvelope
-			if resizeMessageEnvelope, err := convertToResizeMessageEnvelope(message); err != nil {
-				log.Printf("Ignoring message. Object format invalid,\n%s", message)
-			} else {
-				if resizeMessageEnvelope.Type == typeResize {
-					tunnel.OnResize(messageEnvelope.SessionID, resizeMessageEnvelope.Payload.Width, resizeMessageEnvelope.Payload.Height)
-				} else {
-					log.Printf("Ignoring message. Resize object format invalid,\n%s", message)
-				}
+
+		var envelope envelope
+		decoder := json.NewDecoder(strings.NewReader(message))
+		decoder.UseNumber()
+
+		// Disallow unknown fields to validate data
+		decoder.DisallowUnknownFields()
+
+		err := decoder.Decode(&envelope)
+		if err != nil {
+			log.Printf("%s,\n%s", errInvalidObjectFormat, message)
+			return
+		}
+
+		switch envelope.Type {
+		case typeResize:
+			resize, ok := envelope.Payload.(map[string]interface{})
+			if !ok {
+				log.Printf("%s,\n%s", errInvalidObjectFormat, message)
+				return
 			}
-		} else {
-			switch messageEnvelope.Type {
-			case typeInput:
-				tunnel.OnInput(messageEnvelope.SessionID, messageEnvelope.Payload)
-			case typeStart:
-				tunnel.OnStart(messageEnvelope.SessionID)
-			case typeEnd:
-				tunnel.OnEnd(messageEnvelope.SessionID)
-			default:
-				log.Printf("Ignoring message. Object type invalid,\n%s", message)
+
+			width, widthOK := resize["width"]
+			height, heightOK := resize["height"]
+			if !widthOK || !heightOK {
+				log.Printf("%s,\n%s", errInvalidObjectFormat, message)
+				return
 			}
+
+			w, ok := width.(json.Number)
+			if !ok {
+				log.Printf("%s,\n%s", errInvalidObjectFormat, message)
+				return
+			}
+
+			intWidth, err := w.Int64()
+			if err != nil || intWidth < 0 {
+				log.Printf("%s,\n%s", errInvalidObjectFormat, message)
+				return
+			}
+
+			h, ok := height.(json.Number)
+			if !ok {
+				log.Printf("%s,\n%s", errInvalidObjectFormat, message)
+				return
+			}
+
+			intHeight, err := h.Int64()
+			if err != nil || intHeight < 0 {
+				log.Printf("%s,\n%s", errInvalidObjectFormat, message)
+				return
+			}
+
+			tunnel.OnResize(envelope.SessionID, intWidth, intHeight)
+		case typeInput:
+			// Validate payload type
+			if reflect.TypeOf(envelope.Payload) == nil || reflect.TypeOf(envelope.Payload).Name() != "string" {
+				log.Printf("%s,\n%s", errInvalidObjectFormat, message)
+				return
+			}
+			tunnel.OnInput(envelope.SessionID, envelope.Payload.(string))
+		case typeStart:
+			tunnel.OnStart(envelope.SessionID)
+		case typeEnd:
+			tunnel.OnEnd(envelope.SessionID)
+		default:
+			log.Printf("%s,\n%s", errInvalidObjectFormat, message)
 		}
 	}
 
@@ -157,23 +155,20 @@ func (tunnel *SocketTunnel) StartTunnel() {
 }
 
 func handleConnection(tunnel *SocketTunnel) {
-	// Setup the reconnect timeout
-	if tunnel.reconnectWait == 0 {
-		tunnel.reconnectWait = 1
-	} else if tunnel.reconnectWait < 32 {
+	if tunnel.reconnectWait < 32 {
 		tunnel.reconnectWait *= 2
 	}
 	// Socket connection can generate panic sometimes
 	// trying for a graceful reconnect
 	defer func() {
 		if err := recover(); err != nil {
-			log.Println(err)
+			//log.Println(err)
 			log.Printf("Tunnel is attempting to establish connection in %v seconds...", tunnel.reconnectWait)
 			time.Sleep(time.Duration(tunnel.reconnectWait) * time.Second)
 			handleConnection(tunnel)
 		}
 	}()
-	// Connect to socket
+
 	tunnel.socket.Connect()
 }
 
@@ -182,38 +177,31 @@ func (tunnel *SocketTunnel) StopTunnel() {
 	tunnel.socket.Close()
 }
 
-// Send will be used to send data in JSON format over websocket
+// Send will send data in JSON format
 func (tunnel *SocketTunnel) Send(sessionID string, payload string) {
 	if tunnel.socket.IsConnected {
-		messageEnvelope := messageEnvelope{
+		envelope := envelope{
 			Type:      typeOutput,
 			Payload:   payload,
 			SessionID: sessionID,
 		}
-		if jsonPayload, err := convertToJSON(messageEnvelope); err == nil {
-			tunnel.socket.SendText(jsonPayload)
-		} else {
-			log.Println("Unable to convert message to JSON")
-		}
+		json, _ := json.Marshal(envelope)
+		tunnel.socket.SendText(string(json))
 	} else {
 		log.Println("Cannot end session, are you even connected?")
 	}
 }
 
-// End is used to send an end-session message
-// in JSON format over the websocket
+// End is used to send an end-session message in JSON format
 func (tunnel *SocketTunnel) End(sessionID string) {
 	if tunnel.socket.IsConnected {
-		messageEnvelope := messageEnvelope{
+		envelope := envelope{
 			Type:      typeEnd,
 			Payload:   sessionID,
 			SessionID: sessionID,
 		}
-		if jsonPayload, err := convertToJSON(messageEnvelope); err == nil {
-			tunnel.socket.SendText(jsonPayload)
-		} else {
-			log.Println("Unable to convert message to JSON")
-		}
+		json, _ := json.Marshal(envelope)
+		tunnel.socket.SendText(string(json))
 	} else {
 		log.Println("Cannot end session, are you even connected?")
 	}
