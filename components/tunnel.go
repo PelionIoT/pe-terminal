@@ -3,11 +3,11 @@ package components
 import (
 	"encoding/json"
 	"log"
+	"net/http"
 	"reflect"
 	"strings"
+	"sync"
 	"time"
-
-	"github.com/sacOO7/gowebsocket"
 )
 
 /**
@@ -40,7 +40,7 @@ func isValidJSON(s string) bool {
 
 // SocketTunnel defines structure of the tunnel and callbacks
 type SocketTunnel struct {
-	socket        gowebsocket.Socket
+	socket        Socket
 	reconnectWait int
 	OnError       func(err error)
 	OnStart       func(sessionID string)
@@ -52,31 +52,33 @@ type SocketTunnel struct {
 // NewTunnel returns a new instance of SocketTunnel
 func NewTunnel(url string) SocketTunnel {
 	return SocketTunnel{
-		socket:        gowebsocket.New(url),
+		socket: Socket{
+			Url:           url,
+			requestHeader: http.Header{},
+			useSSL:        false,
+			timeout:       0,
+			sendMutex:     &sync.Mutex{},
+			receiveMutex:  &sync.Mutex{},
+		},
 		reconnectWait: 1,
 	}
 }
 
 // StartTunnel will register callbacks and start connection
 func (tunnel *SocketTunnel) StartTunnel() {
-	tunnel.socket.ConnectionOptions = gowebsocket.ConnectionOptions{
-		UseSSL:         false, // Don't use SSL
-		UseCompression: false, // Don't use compression
-	}
-
-	tunnel.socket.OnConnected = func(socket gowebsocket.Socket) {
+	tunnel.socket.OnConnected = func(socket Socket) {
 		log.Printf("Tunnel connected at: %s\n", socket.Url)
 		tunnel.reconnectWait = 1
 	}
-	tunnel.socket.OnDisconnected = func(err error, socket gowebsocket.Socket) {
+	tunnel.socket.OnDisconnected = func(err error, socket Socket) {
 		log.Println("Tunnel disconnected")
 		tunnel.OnError(err)
 		handleConnection(tunnel)
 	}
-	tunnel.socket.OnConnectError = func(err error, socket gowebsocket.Socket) {
+	tunnel.socket.OnConnectError = func(err error, socket Socket) {
 		tunnel.OnError(err)
 	}
-	tunnel.socket.OnTextMessage = func(message string, socket gowebsocket.Socket) {
+	tunnel.socket.OnTextMessage = func(message string, socket Socket) {
 		if ok := isValidJSON(message); !ok {
 			log.Printf("%s,\n%s", errInvalidEnvelope, message)
 			return
