@@ -1,7 +1,6 @@
 package components
 
 import (
-	"bufio"
 	"log"
 	"os"
 	"os/exec"
@@ -11,120 +10,84 @@ import (
 	"github.com/creack/pty"
 )
 
-/**
- * Created by Aditya Awasthi on 04/02/2021.
- * @author github.com/adwardstark
- */
-
-// Terminal defines the base-level
-// structure for the terminal and
-// all the available callbacks
 type Terminal struct {
-	pty           *os.File
+	cmd           *exec.Cmd
+	tty           *os.File
+	ttyData       chan string
+	ttyError      chan bool
 	readTimeout   int64
-	isPromptReady bool
-	lastCommand   string
+	maxBufferSize int64
 	OnData        func(output string)
 	OnError       func(err error)
 	OnClose       func()
 }
 
-// This channel is used to send
-// stream of data read from the
-// pty file [ /dev/ptmx ]
-var broadcast = make(chan string)
-
-// These constants are used to identify which
-// command/keystroke is received from remote
-const (
-	Enter            = "\r"
-	EnterWithNewLine = "\r\n"
-	IsClearScreen    = "clear"
-	ClearScreen      = "\033c"
-	IsBackspaceKey   = "\u007f"
-	Backspace        = "\b \b"
-	CtrlC            = "\x03"
-	CtrlX            = "\x18"
-	CtrlZ            = "\x1a"
-	EscKey           = "\x1b"
-	ArrowKeyUp       = "\x1b[A"
-	ArrowKeyDown     = "\x1b[B"
-	ArrowKeyLeft     = "\x1b[D"
-	ArrowKeyRight    = "\x1b[C"
-	Space            = " "
-	Empty            = ""
-	ExitSession      = "exit"
-)
-
-// NewTerminal will return a new instance of Terminal
-// and attaches a pty to it, [ /dev/ptmx ] with a bash-shell
-// and starts a watcher-service which monitors the pty
-// and sends the data-stream via the broadcast whenever
-// something is written to the pty
-func NewTerminal() (Terminal, error) {
-	log.Println("Starting new session")
+// Returns a new instance of tty
+func NewTerminal(command string) (Terminal, error) {
+	log.Println("Starting new session.")
 	term := Terminal{
-		readTimeout: 5, // defaults to 5 seconds
+		ttyData:       make(chan string),
+		ttyError:      make(chan bool),
+		readTimeout:   100,  // In millisceonds [ default ]
+		maxBufferSize: 1024, // In bytes [ default ]
 	}
-	c := exec.Command("bash") // bash-shell
-	pty, err := pty.Start(c)
+	cmd := exec.Command(command)
+	tty, err := pty.Start(cmd)
 	if err == nil {
-		term.pty = pty
-		term.isPromptReady = false
-		term.lastCommand = "+"
-		go watchPty(term.pty) // watcher-service
+		term.tty = tty
+		term.cmd = cmd
+		go term.watchTTY() // Spin-up watcher-service
 	}
 	return term, err
 }
 
-// Writes a command to the pty
-func (term *Terminal) Write(command string) {
-	if len(command) > 2 { // Strip-out space, backspace, enter keystroke characters
-		term.lastCommand = strings.TrimRight(command, string(Space+IsBackspaceKey+Enter))
-		log.Printf("->Write() lastCommand set to: %q", term.lastCommand)
-	}
-	log.Printf("->Write() execute command: %q", command)
-	if _, err := term.pty.Write([]byte(string(command))); err != nil {
-		//log.Println(err)
-		if term.OnError != nil {
-			term.OnError(err)
-		}
-	} else {
-		term.processResponse()
-	}
+// Read the initial prompt at setup
+func (term *Terminal) InitPrompt() {
+	term.watchComms(2000)
 }
 
-// Watcher-service for the pty, monitors everything
-// written to the pty and send a broadcast stream of data
-func watchPty(file *os.File) {
+// Configure read timeout for the comms
+func (term *Terminal) SetReadTimeout(timeout int64) {
+	term.readTimeout = timeout
+}
+
+// Configure size of buffer to read from tty
+func (term *Terminal) SetTTYBufferSize(size int64) {
+	term.maxBufferSize = size
+}
+
+// Monitors everything written to the tty and sends a respective broadcast
+func (term *Terminal) watchTTY() {
 	log.Println("Starting watcher-service")
-	stdoutScanner := bufio.NewScanner(file)
-	for stdoutScanner.Scan() {
-		broadcast <- stdoutScanner.Text()
+	for {
+		buffer := make([]byte, term.maxBufferSize)
+		readLength, err := term.tty.Read(buffer)
+		if err != nil {
+			log.Printf("Failed to read from terminal: %s", err)
+			term.ttyError <- true
+			return
+		}
+		payload := string(buffer[:readLength])
+		log.Printf("Sending message of size %v bytes", readLength)
+		term.ttyData <- payload
 	}
 }
 
-// Reads data from received from the broadcast,
-// for a specific interval defined at the time
-// of initialization, blocks the write operation
-// for read to complete before the next write
-// to provide syncronization across read/writes
-func (term *Terminal) processResponse() {
-	timeout := term.readTimeout
-	log.Printf("Reading from terminal for %v seconds\n", timeout)
-	timeoutAfter := time.After(time.Duration(timeout) * time.Second)
+// Reads the broadcast coming through channels
+func (term *Terminal) watchComms(timeout int64) {
+	log.Printf("Reading from terminal for %v millis\n", timeout)
+	timeoutAfter := time.After(time.Duration(timeout) * time.Millisecond)
 	for {
 		select {
-		case data := <-broadcast:
-			//log.Println("->onTerminal()", data)
-			if term.OnData != nil && !strings.HasSuffix(strings.TrimSpace(data), term.lastCommand) { // Avoid reprinting the prompt again
+		case data := <-term.ttyData:
+			if term.OnData != nil {
 				term.OnData(data)
 			}
+		case <-term.ttyError:
+			term.Close()
 			if term.OnClose != nil {
-				if data == "exit" {
-					term.Close()
-					term.OnClose()
-				}
+				term.OnData("Logging out, bye :)\r\n")
+				term.OnClose()
 			}
 		case <-timeoutAfter:
 			log.Println("Read timeout, returning control")
@@ -133,44 +96,41 @@ func (term *Terminal) processResponse() {
 	}
 }
 
-// SetReadTimeout can be used to configure the interval
-// for the read to occurr from pty before next write operation
-func (term *Terminal) SetReadTimeout(timeout int64) {
-	term.readTimeout = timeout
-}
-
-// Initializes prompt after some delay
-func (term *Terminal) InitPrompt() {
-	time.AfterFunc(5*time.Second, func() { // 5 seconds seems stable
-		log.Println("Initializing new shell-prompt")
-		term.Write(Enter)
-	})
-}
-
-// IsPromptReady can be used to check whether
-// a shell-prompt is initialized yet or not
-func (term *Terminal) IsPromptReady() bool {
-	return term.isPromptReady
-}
-
-// SetPromptReady can be used to set status
-// of IsPromptReady() to true
-func (term *Terminal) SetPromptReady() {
-	term.isPromptReady = true
-}
-
-// Resize is yet to be implemented
-func (term *Terminal) Resize(width uint16, height uint16) {
-	log.Printf("->Resize() width: %v, height: %v\n", width, height)
-	termSize := pty.Winsize{Y: height, X: width} // X is width, Y is height
-	if err := pty.Setsize(term.pty, &termSize); err != nil {
-		log.Println(err)
+// Writes to the tty
+func (term *Terminal) Write(command string) {
+	log.Printf("Execute command: %q", command)
+	if _, err := term.tty.Write([]byte(strings.Trim(command, "\x00"))); err != nil {
+		if term.OnError != nil {
+			term.OnError(err)
+		}
+	} else {
+		term.watchComms(term.readTimeout)
 	}
 }
 
-// Close is used to terminate the pty-session
-func (term *Terminal) Close() error {
-	// Make sure to close the pty at the end.
-	err := term.pty.Close()
-	return err
+// Resizes the tty window
+func (term *Terminal) Resize(width uint16, height uint16) {
+	log.Printf("Resizing with width: %v, height: %v\n", width, height)
+	termSize := pty.Winsize{Y: height, X: width} // X is width, Y is height
+	if err := pty.Setsize(term.tty, &termSize); err != nil {
+		if term.OnError != nil {
+			term.OnError(err)
+		}
+	}
+}
+
+// Closes the tty session
+func (term *Terminal) Close() {
+	log.Println("Gracefully stopping terminal...")
+	if err := term.cmd.Process.Kill(); err != nil {
+		log.Printf("Failed to kill process: %s\n", err)
+	}
+	if _, err := term.cmd.Process.Wait(); err != nil {
+		log.Printf("Failed to wait for process to exit: %s\n", err)
+	}
+	if err := term.tty.Close(); err != nil {
+		log.Printf("Failed to close terminal gracefully: %s\n", err)
+	} else {
+		log.Println("Terminal stopped successfully!")
+	}
 }
