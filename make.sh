@@ -15,12 +15,7 @@ build() {
 # Starts pe-terminal with/without parameters
 run() {
     build
-    if [[ -n "$1" && -n "$2" && -n "$3" ]]; then
-        # Expected parameters -host=gateways.local -port=8080 -endpoint=/relay-term
-        ./pe-terminal $1 $2 $3
-    elif [[ -n "$1" && -n "$2" ]]; then
-        ./pe-terminal $1 $2
-    elif [[ -n "$1" ]]; then
+    if [[ -n "$1" ]]; then
         ./pe-terminal $1
     else
         ./pe-terminal

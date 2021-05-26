@@ -4,18 +4,17 @@ Terminal-client for Pelion-Edge Gateways, ( formerly [relay-term](https://github
 
 How to
 ------
+ * **Run:** To start terminal, do:
+    ```bash
+    ./make run -config=example-config.json # or provide your own config.json
+    ```
  * **Build:** To generate the terminal binary, do:
     ```bash
     ./make build
     ```
-
- * **Run:** To start terminal with paramters, do:
+    or to cross-compile for another platform, do:
     ```bash
-    ./make run -host=gateways.local -port=8080 -endpoint=/relay-term
-    ```
-    or to run with default parameters, do
-    ```bash
-    ./make run
+    ./make build GOOS=<linux/mac/windows> GOARCH=<amd64/arm>
     ```
  * **Remove:** To remove generated binary, do:
     ```bash

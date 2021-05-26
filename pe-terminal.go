@@ -1,10 +1,13 @@
 package main
 
 import (
+	"encoding/json"
 	"flag"
+	"io/ioutil"
 	"log"
 	"os"
 	"os/signal"
+	"strings"
 
 	"github.com/PelionIoT/pe-terminal/components"
 )
@@ -14,30 +17,51 @@ import (
  * @author github.com/adwardstark
  */
 
+type Config struct {
+	CloudURL      *string `json:"cloud"`
+	Command       *string `json:"command"`
+	SkipTLSVerify *bool   `json:"noValidate"`
+	SSLCert       *string `json:"certificate"`
+	SSLKey        *string `json:"key"`
+}
+
 func main() {
-	var host string
-	var port string
-	var endpoint string
+	var configFile string
+	var tunnelURL string
 
-	flag.StringVar(&host, "host", "127.0.0.1", "Host address of terminal service")
-	flag.StringVar(&port, "port", "3000", "Port number of terminal service")
-	flag.StringVar(&endpoint, "endpoint", "/", "Endpoint to access terminal service")
-
+	flag.StringVar(&configFile, "config", "", "Run with a JSON config")
 	flag.Parse()
 
 	log.Println("=====[ Pelion Edge Terminal ]=====")
+
+	command := "/bin/bash" // [ default ]
+	if configFile != "" {
+		log.Println("Using config-file:", configFile)
+		config := readConfig(configFile)
+		if config.CloudURL != nil && *config.CloudURL != "" {
+			tunnelURL = makeWsURL(*config.CloudURL)
+		} else {
+			log.Println("Missing field 'cloud` in config")
+			os.Exit(1)
+		}
+		if config.Command != nil && *config.Command != "" {
+			command = *config.Command
+		}
+	} else {
+		log.Println("No config-file provided, use flag -config=<filename>.json")
+		os.Exit(1)
+	}
 
 	interrupt := make(chan os.Signal, 1)
 	signal.Notify(interrupt, os.Interrupt)
 
 	sessionsMap := make(map[string]*components.Terminal)
-	tunnelURL := "ws://" + string(host+":"+port+endpoint)
 
 	// Setup tunnel-connection
 	tunnel := components.NewTunnel(tunnelURL)
 	// Register callbacks to tunnel
 	tunnel.OnStart = func(sessionID string) {
-		term, err := components.NewTerminal("/bin/bash") // spawn new bash shell
+		term, err := components.NewTerminal(command) // spawn new bash shell
 		if err != nil {
 			log.Println(err)
 			return
@@ -93,4 +117,35 @@ func main() {
 			return
 		}
 	}
+}
+
+func readConfig(fileName string) Config {
+	configFile, err := os.Open(fileName)
+	if err != nil {
+		log.Println("Error:", err)
+		os.Exit(1)
+	}
+	defer configFile.Close()
+
+	buffer, err := ioutil.ReadAll(configFile)
+	if err != nil {
+		log.Println("Error:", err)
+		os.Exit(1)
+	}
+
+	var config Config
+	if err := json.Unmarshal([]byte(buffer), &config); err != nil {
+		log.Println("Error:", err)
+		os.Exit(1)
+	}
+	return config
+}
+
+func makeWsURL(url string) string {
+	if strings.HasPrefix(url, "http") {
+		url = strings.Replace(url, "http", "ws", -1)
+	} else if strings.HasPrefix(url, "https") {
+		url = strings.Replace(url, "https", "ws", -1) // Should be 'wss://', skipping for now as SSL support is not implemented yet.
+	}
+	return url
 }
