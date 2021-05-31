@@ -2,12 +2,14 @@ package components
 
 import (
 	"encoding/json"
-	"log"
+	"fmt"
 	"net/http"
 	"reflect"
 	"strings"
 	"sync"
 	"time"
+
+	"go.uber.org/zap"
 )
 
 /**
@@ -42,6 +44,7 @@ func isValidJSON(s string) bool {
 type SocketTunnel struct {
 	socket        Socket
 	reconnectWait int
+	logger        *zap.Logger
 	OnError       func(err error)
 	OnStart       func(sessionID string)
 	OnEnd         func(sessionID string)
@@ -50,7 +53,7 @@ type SocketTunnel struct {
 }
 
 // NewTunnel returns a new instance of SocketTunnel
-func NewTunnel(url string) SocketTunnel {
+func NewTunnel(url string, logger *zap.Logger) SocketTunnel {
 	return SocketTunnel{
 		socket: Socket{
 			Url:           url,
@@ -59,19 +62,21 @@ func NewTunnel(url string) SocketTunnel {
 			timeout:       0,
 			sendMutex:     &sync.Mutex{},
 			receiveMutex:  &sync.Mutex{},
+			logger:        logger,
 		},
 		reconnectWait: 1,
+		logger:        logger,
 	}
 }
 
 // StartTunnel will register callbacks and start connection
 func (tunnel *SocketTunnel) StartTunnel() {
 	tunnel.socket.OnConnected = func(socket Socket) {
-		log.Printf("Tunnel connected at: %s\n", socket.Url)
+		tunnel.logger.Info("Tunnel connected", zap.String("url", socket.Url))
 		tunnel.reconnectWait = 1
 	}
 	tunnel.socket.OnDisconnected = func(err error, socket Socket) {
-		log.Println("Tunnel disconnected")
+		tunnel.logger.Info("Tunnel disconnected")
 		tunnel.OnError(err)
 		handleConnection(tunnel)
 	}
@@ -80,7 +85,7 @@ func (tunnel *SocketTunnel) StartTunnel() {
 	}
 	tunnel.socket.OnTextMessage = func(message string, socket Socket) {
 		if ok := isValidJSON(message); !ok {
-			log.Printf("%s,\n%s", errInvalidEnvelope, message)
+			tunnel.logger.Error(errInvalidEnvelope, zap.String("payload", message))
 			return
 		}
 
@@ -93,7 +98,7 @@ func (tunnel *SocketTunnel) StartTunnel() {
 
 		err := decoder.Decode(&envelope)
 		if err != nil {
-			log.Printf("%s,\n%s", errInvalidObjectFormat, message)
+			tunnel.logger.Error(errInvalidObjectFormat, zap.String("payload", message))
 			return
 		}
 
@@ -101,38 +106,38 @@ func (tunnel *SocketTunnel) StartTunnel() {
 		case typeResize:
 			resize, ok := envelope.Payload.(map[string]interface{})
 			if !ok {
-				log.Printf("%s,\n%s", errInvalidObjectFormat, message)
+				tunnel.logger.Error(errInvalidObjectFormat, zap.String("payload", message))
 				return
 			}
 
 			width, widthOK := resize["width"]
 			height, heightOK := resize["height"]
 			if !widthOK || !heightOK {
-				log.Printf("%s,\n%s", errInvalidObjectFormat, message)
+				tunnel.logger.Error(errInvalidObjectFormat, zap.String("payload", message))
 				return
 			}
 
 			w, ok := width.(json.Number)
 			if !ok {
-				log.Printf("%s,\n%s", errInvalidObjectFormat, message)
+				tunnel.logger.Error(errInvalidObjectFormat, zap.String("payload", message))
 				return
 			}
 
 			intWidth, err := w.Int64()
 			if err != nil || intWidth < 0 {
-				log.Printf("%s,\n%s", errInvalidObjectFormat, message)
+				tunnel.logger.Error(errInvalidObjectFormat, zap.String("payload", message))
 				return
 			}
 
 			h, ok := height.(json.Number)
 			if !ok {
-				log.Printf("%s,\n%s", errInvalidObjectFormat, message)
+				tunnel.logger.Error(errInvalidObjectFormat, zap.String("payload", message))
 				return
 			}
 
 			intHeight, err := h.Int64()
 			if err != nil || intHeight < 0 {
-				log.Printf("%s,\n%s", errInvalidObjectFormat, message)
+				tunnel.logger.Error(errInvalidObjectFormat, zap.String("payload", message))
 				return
 			}
 
@@ -140,7 +145,7 @@ func (tunnel *SocketTunnel) StartTunnel() {
 		case typeInput:
 			// Validate payload type
 			if reflect.TypeOf(envelope.Payload) == nil || reflect.TypeOf(envelope.Payload).Name() != "string" {
-				log.Printf("%s,\n%s", errInvalidObjectFormat, message)
+				tunnel.logger.Error(errInvalidObjectFormat, zap.String("payload", message))
 				return
 			}
 			tunnel.OnInput(envelope.SessionID, envelope.Payload.(string))
@@ -149,7 +154,7 @@ func (tunnel *SocketTunnel) StartTunnel() {
 		case typeEnd:
 			tunnel.OnEnd(envelope.SessionID)
 		default:
-			log.Printf("%s,\n%s", errInvalidObjectFormat, message)
+			tunnel.logger.Error(errInvalidObjectFormat, zap.String("payload", message))
 		}
 	}
 
@@ -164,8 +169,7 @@ func handleConnection(tunnel *SocketTunnel) {
 	// trying for a graceful reconnect
 	defer func() {
 		if err := recover(); err != nil {
-			//log.Println(err)
-			log.Printf("Tunnel is attempting to establish connection in %v seconds...", tunnel.reconnectWait)
+			tunnel.logger.Error("Tunnel is attempting to establish connection in " + fmt.Sprint(tunnel.reconnectWait) + " seconds...")
 			time.Sleep(time.Duration(tunnel.reconnectWait) * time.Second)
 			handleConnection(tunnel)
 		}
@@ -190,7 +194,7 @@ func (tunnel *SocketTunnel) Send(sessionID string, payload string) {
 		json, _ := json.Marshal(envelope)
 		tunnel.socket.SendText(string(json))
 	} else {
-		log.Println("Cannot end session, are you even connected?")
+		tunnel.logger.Error("Cannot access session, are you even connected?")
 	}
 }
 
@@ -205,6 +209,6 @@ func (tunnel *SocketTunnel) End(sessionID string) {
 		json, _ := json.Marshal(envelope)
 		tunnel.socket.SendText(string(json))
 	} else {
-		log.Println("Cannot end session, are you even connected?")
+		tunnel.logger.Error("Cannot end session, are you even connected?")
 	}
 }

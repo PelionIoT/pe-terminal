@@ -3,5 +3,6 @@
 	"noValidate": true,
 	"certificate": "",
 	"key": "",
-	"command": "/bin/bash"
+	"command": "/bin/bash",
+	"logLevel": "info"
 }
