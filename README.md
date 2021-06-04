@@ -32,3 +32,7 @@ Terminal-client for Pelion-Edge Gateways, ( formerly [relay-term](https://github
   ```bash
   ./make describe
   ```
+
+## License
+----------
+Apache 2.0. See the [LICENSE](https://github.com/PelionIoT/pe-terminal/blob/master/LICENSE) file for details.
