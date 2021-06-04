@@ -14,11 +14,20 @@ build() {
 
 # Starts pe-terminal with/without parameters
 run() {
-    build
     if [[ -n "$1" ]]; then
+        build
         ./pe-terminal $1
     else
-        ./pe-terminal
+        echo "No config-file provided, use flag -config=<filename>.json"
+    fi
+}
+
+# Runs all the unit tests
+test() {
+    if [[ -n "$1" ]]; then
+        go test $1 -timeout 15s github.com/PelionIoT/pe-terminal/components
+    else
+        go test -timeout 15s github.com/PelionIoT/pe-terminal/components
     fi
 }
 

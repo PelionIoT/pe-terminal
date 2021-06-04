@@ -19,12 +19,9 @@ import (
  */
 
 type Config struct {
-	CloudURL      *string `json:"cloud"`
-	Command       *string `json:"command"`
-	SkipTLSVerify *bool   `json:"noValidate"`
-	SSLCert       *string `json:"certificate"`
-	SSLKey        *string `json:"key"`
-	LogLevel      *string `json:"logLevel"`
+	CloudURL *string `json:"cloud"`
+	Command  *string `json:"command"`
+	LogLevel *string `json:"logLevel"`
 }
 
 var logger *zap.Logger
@@ -60,7 +57,7 @@ func main() {
 		}
 		// Set logging-level [ defaults to: INFO]
 		if config.LogLevel != nil && *config.LogLevel != "" {
-			atom.SetLevel(ZapLogLevel(*config.LogLevel))
+			atom.SetLevel(zapLogLevel(*config.LogLevel))
 		}
 		// Set shell-command
 		if config.Command != nil && *config.Command != "" {
@@ -164,12 +161,12 @@ func makeWsURL(url string) string {
 	if strings.HasPrefix(url, "http") {
 		url = strings.Replace(url, "http", "ws", -1)
 	} else if strings.HasPrefix(url, "https") {
-		url = strings.Replace(url, "https", "ws", -1) // Should be 'wss://', skipping for now as SSL support is not implemented yet.
+		url = strings.Replace(url, "https", "ws", -1) // Should be 'wss://', skipping for now as SSL is not supported.
 	}
 	return url
 }
 
-func ZapLogLevel(logLevel string) zapcore.Level {
+func zapLogLevel(logLevel string) zapcore.Level {
 	switch strings.ToLower(logLevel) {
 	case "debug":
 		return zap.DebugLevel
