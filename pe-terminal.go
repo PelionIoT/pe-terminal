@@ -46,7 +46,7 @@ var logger *zap.Logger
 
 func main() {
 	var configFile string
-	var tunnelURL string
+	var config Config
 
 	flag.StringVar(&configFile, "config", "", "Run with a JSON config")
 	flag.Parse()
@@ -61,30 +61,10 @@ func main() {
 	defer logger.Sync() // Flush buffer before closing
 
 	logger.Info("=====[ Pelion Edge Terminal ]=====")
-
-	command := "/bin/bash" // [ default ]
-	if configFile != "" {
-		logger.Info("Using config-file", zap.String("filename", configFile))
-		config := readConfig(configFile)
-		// Set cloud-url
-		if config.CloudURL != nil && *config.CloudURL != "" {
-			tunnelURL = makeWsURL(*config.CloudURL)
-		} else {
-			logger.Error("Missing field 'cloud` in config")
-			os.Exit(1)
-		}
-		// Set logging-level [ defaults to: INFO]
-		if config.LogLevel != nil && *config.LogLevel != "" {
-			atom.SetLevel(zapLogLevel(*config.LogLevel))
-		}
-		// Set shell-command
-		if config.Command != nil && *config.Command != "" {
-			command = *config.Command
-		}
-	} else {
-		logger.Error("No config-file provided, use flag -config=<filename>.json")
-		os.Exit(1)
-	}
+	
+	// Parse configuration
+	config = readConfig(configFile)
+	atom.SetLevel(zapLogLevel(*config.LogLevel))
 
 	interrupt := make(chan os.Signal, 1)
 	signal.Notify(interrupt, os.Interrupt)
@@ -92,10 +72,10 @@ func main() {
 	sessionsMap := make(map[string]*components.Terminal)
 
 	// Setup tunnel-connection
-	tunnel := components.NewTunnel(tunnelURL, logger)
+	tunnel := components.NewTunnel(*config.CloudURL, logger)
 	// Register callbacks to tunnel
 	tunnel.OnStart = func(sessionID string) {
-		term, err := components.NewTerminal(command, logger) // spawn new bash shell
+		term, err := components.NewTerminal(*config.Command, logger) // spawn new bash shell
 		if err != nil {
 			logger.Error("Error in initializing new terminal", zap.Error(err))
 			return
@@ -154,6 +134,13 @@ func main() {
 }
 
 func readConfig(fileName string) Config {
+	if fileName != "" {
+		logger.Info("Using config-file", zap.String("filename", fileName))
+	} else {
+		logger.Error("No config-file provided, use flag -config=<filename>.json")
+		os.Exit(1)
+	}
+
 	configFile, err := os.Open(fileName)
 	if err != nil {
 		logger.Error("Failed to open config-file", zap.Error(err))
@@ -172,6 +159,23 @@ func readConfig(fileName string) Config {
 		logger.Error("Failed to parse config-file", zap.Error(err))
 		os.Exit(1)
 	}
+
+	// Set cloud-url
+	if config.CloudURL != nil && *config.CloudURL != "" {
+		*config.CloudURL = makeWsURL(*config.CloudURL)
+	} else {
+		logger.Error("Missing field 'cloud` in config")
+		os.Exit(1)
+	}
+	// Set logging-level [ defaults to: INFO]
+	if config.LogLevel == nil && *config.LogLevel == "" {
+		*config.LogLevel = "info"
+	}
+	// Set shell-command
+	if config.Command == nil && *config.Command == "" {
+		*config.Command = "/bin/bash" // [ default ]
+	}
+
 	return config
 }
 

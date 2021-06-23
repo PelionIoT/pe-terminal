@@ -50,6 +50,7 @@ const (
 	typeEnd                = "end"
 	errInvalidEnvelope     = "Data could not be parsed as JSON"
 	errInvalidObjectFormat = "Object format invalid"
+	errLostConnection      = "Connection to cloud has been lost"
 )
 
 func isValidJSON(s string) bool {
@@ -73,10 +74,10 @@ type SocketTunnel struct {
 func NewTunnel(url string, logger *zap.Logger) SocketTunnel {
 	return SocketTunnel{
 		socket: Socket{
-			Url:           url,
-			sendMutex:     &sync.Mutex{},
-			receiveMutex:  &sync.Mutex{},
-			logger:        logger,
+			Url:          url,
+			sendMutex:    &sync.Mutex{},
+			receiveMutex: &sync.Mutex{},
+			logger:       logger,
 		},
 		reconnectWait: 1,
 		logger:        logger,
@@ -208,7 +209,7 @@ func (tunnel *SocketTunnel) Send(sessionID string, payload string) {
 		json, _ := json.Marshal(envelope)
 		tunnel.socket.SendText(string(json))
 	} else {
-		tunnel.logger.Error("Cannot access session, are you even connected?")
+		tunnel.logger.Error(errLostConnection)
 	}
 }
 
@@ -223,6 +224,6 @@ func (tunnel *SocketTunnel) End(sessionID string) {
 		json, _ := json.Marshal(envelope)
 		tunnel.socket.SendText(string(json))
 	} else {
-		tunnel.logger.Error("Cannot end session, are you even connected?")
+		tunnel.logger.Error(errLostConnection)
 	}
 }
