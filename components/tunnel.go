@@ -21,7 +21,6 @@ package components
 import (
 	"encoding/json"
 	"fmt"
-	"net/http"
 	"reflect"
 	"strings"
 	"sync"
@@ -75,9 +74,6 @@ func NewTunnel(url string, logger *zap.Logger) SocketTunnel {
 	return SocketTunnel{
 		socket: Socket{
 			Url:           url,
-			requestHeader: http.Header{},
-			useSSL:        false,
-			timeout:       0,
 			sendMutex:     &sync.Mutex{},
 			receiveMutex:  &sync.Mutex{},
 			logger:        logger,
@@ -89,19 +85,19 @@ func NewTunnel(url string, logger *zap.Logger) SocketTunnel {
 
 // StartTunnel will register callbacks and start connection
 func (tunnel *SocketTunnel) StartTunnel() {
-	tunnel.socket.OnConnected = func(socket Socket) {
-		tunnel.logger.Info("Tunnel connected", zap.String("url", socket.Url))
+	tunnel.socket.OnConnected = func() {
+		tunnel.logger.Info("Tunnel connected", zap.String("url", tunnel.socket.Url))
 		tunnel.reconnectWait = 1
 	}
-	tunnel.socket.OnDisconnected = func(err error, socket Socket) {
+	tunnel.socket.OnDisconnected = func(err error) {
 		tunnel.logger.Info("Tunnel disconnected")
 		tunnel.OnError(err)
 		handleConnection(tunnel)
 	}
-	tunnel.socket.OnConnectError = func(err error, socket Socket) {
+	tunnel.socket.OnConnectError = func(err error) {
 		tunnel.OnError(err)
 	}
-	tunnel.socket.OnTextMessage = func(message string, socket Socket) {
+	tunnel.socket.OnTextMessage = func(message string) {
 		if ok := isValidJSON(message); !ok {
 			tunnel.logger.Error(errInvalidEnvelope, zap.String("payload", message))
 			return

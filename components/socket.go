@@ -23,7 +23,6 @@ import (
 	"errors"
 	"net/http"
 	"sync"
-	"time"
 
 	"github.com/gorilla/websocket"
 	"go.uber.org/zap"
@@ -36,18 +35,15 @@ import (
 
 type Socket struct {
 	connection     *websocket.Conn
-	requestHeader  http.Header
-	useSSL         bool
-	timeout        time.Duration
 	sendMutex      *sync.Mutex
 	receiveMutex   *sync.Mutex
 	logger         *zap.Logger
 	Url            string
 	IsConnected    bool
-	OnConnected    func(socket Socket)
-	OnTextMessage  func(message string, socket Socket)
-	OnConnectError func(err error, socket Socket)
-	OnDisconnected func(err error, socket Socket)
+	OnConnected    func()
+	OnTextMessage  func(message string)
+	OnConnectError func(err error)
+	OnDisconnected func(err error)
 }
 
 func (socket *Socket) Connect() {
@@ -55,27 +51,28 @@ func (socket *Socket) Connect() {
 	var resp *http.Response
 
 	websocketDialer := &websocket.Dialer{}
-	websocketDialer.TLSClientConfig = &tls.Config{InsecureSkipVerify: socket.useSSL}
+	websocketDialer.TLSClientConfig = &tls.Config{InsecureSkipVerify: false}
 
-	socket.connection, resp, err = websocketDialer.Dial(socket.Url, socket.requestHeader)
+	socket.connection, resp, err = websocketDialer.Dial(socket.Url, http.Header{})
 
 	if err != nil {
 		socket.logger.Debug("Websocket: Failed to connect", zap.Error(err))
-		if resp != nil {
-			socket.logger.Debug("Websocket: Got an HTTP Response", zap.Int("code", resp.StatusCode), zap.String("status", resp.Status))
-		}
 		socket.IsConnected = false
 		if socket.OnConnectError != nil {
-			socket.OnConnectError(err, *socket)
+			socket.OnConnectError(err)
 		}
 		return
+	}
+
+	if resp != nil {
+		socket.logger.Debug("Websocket: Got an HTTP Response", zap.Int("code", resp.StatusCode), zap.String("status", resp.Status))
 	}
 
 	socket.logger.Debug("Websocket: Connected")
 
 	if socket.OnConnected != nil {
 		socket.IsConnected = true
-		socket.OnConnected(*socket)
+		socket.OnConnected()
 	}
 
 	defaultCloseHandler := socket.connection.CloseHandler()
@@ -84,7 +81,7 @@ func (socket *Socket) Connect() {
 		socket.logger.Debug("Websocket: Disconnected", zap.Error(err))
 		if socket.OnDisconnected != nil {
 			socket.IsConnected = false
-			socket.OnDisconnected(errors.New(text), *socket)
+			socket.OnDisconnected(errors.New(text))
 		}
 		return err
 	})
@@ -92,23 +89,20 @@ func (socket *Socket) Connect() {
 	go func() {
 		for {
 			socket.receiveMutex.Lock()
-			if socket.timeout != 0 {
-				socket.connection.SetReadDeadline(time.Now().Add(socket.timeout))
-			}
 			messageType, message, err := socket.connection.ReadMessage()
 			socket.receiveMutex.Unlock()
 			if err != nil {
 				socket.logger.Debug("Websocket: Read-failed", zap.Error(err))
 				if socket.OnDisconnected != nil {
 					socket.IsConnected = false
-					socket.OnDisconnected(err, *socket)
+					socket.OnDisconnected(err)
 				}
 				return
 			}
 			socket.logger.Debug("Websocket: Data-received", zap.ByteString("message", message))
 
 			if messageType == websocket.TextMessage && socket.OnTextMessage != nil {
-				socket.OnTextMessage(string(message), *socket)
+				socket.OnTextMessage(string(message))
 			} else {
 				socket.logger.Debug("Websocket: Unsupported message-type")
 			}
@@ -139,6 +133,6 @@ func (socket *Socket) Close() {
 	socket.connection.Close()
 	if socket.OnDisconnected != nil {
 		socket.IsConnected = false
-		socket.OnDisconnected(err, *socket)
+		socket.OnDisconnected(err)
 	}
 }
