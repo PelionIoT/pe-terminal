@@ -114,9 +114,6 @@ func main() {
 			tunnel.GetSession(sessionID).Resize(uint16(width), uint16(height))
 		}
 	}
-	tunnel.OnError = func(err error) {
-		logger.Error("Tunnel error", zap.Error(err))
-	}
 	// Start tunnel-connection
 	tunnel.StartTunnel()
 	// Wait for interrupt

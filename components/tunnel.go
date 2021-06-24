@@ -64,7 +64,6 @@ type SocketTunnel struct {
 	reconnectWait int
 	logger        *zap.Logger
 	sessionsMap   map[string]*Terminal
-	OnError       func(err error)
 	OnStart       func(sessionID string)
 	OnEnd         func(sessionID string)
 	OnInput       func(sessionID string, payload string)
@@ -93,12 +92,12 @@ func (tunnel *SocketTunnel) StartTunnel() {
 		tunnel.reconnectWait = 1
 	}
 	tunnel.socket.OnDisconnected = func(err error) {
-		tunnel.logger.Info("Tunnel disconnected")
-		tunnel.OnError(err)
-		handleConnection(tunnel)
+		tunnel.logger.Error("Tunnel disconnected", zap.Error(err))
+		tunnel.handleReConnection()
 	}
 	tunnel.socket.OnConnectError = func(err error) {
-		tunnel.OnError(err)
+		tunnel.logger.Error("Tunnel error", zap.Error(err))
+		tunnel.handleReConnection()
 	}
 	tunnel.socket.OnTextMessage = func(message string) {
 		if ok := isValidJSON(message); !ok {
@@ -175,23 +174,17 @@ func (tunnel *SocketTunnel) StartTunnel() {
 		}
 	}
 
-	handleConnection(tunnel)
+	tunnel.socket.Connect()
 }
 
-func handleConnection(tunnel *SocketTunnel) {
+func (tunnel *SocketTunnel) handleReConnection() {
+	tunnel.logger.Error("Tunnel is attempting to establish connection in " + fmt.Sprint(tunnel.reconnectWait) + " seconds...")
+	time.Sleep(time.Duration(tunnel.reconnectWait) * time.Second)
+
 	if tunnel.reconnectWait < 32 {
 		tunnel.reconnectWait *= 2
 	}
-	// Socket connection can generate panic sometimes
-	// trying for a graceful reconnect
-	defer func() {
-		if err := recover(); err != nil {
-			tunnel.logger.Error("Tunnel is attempting to establish connection in " + fmt.Sprint(tunnel.reconnectWait) + " seconds...")
-			time.Sleep(time.Duration(tunnel.reconnectWait) * time.Second)
-			handleConnection(tunnel)
-		}
-	}()
-
+	
 	tunnel.socket.Connect()
 }
 
