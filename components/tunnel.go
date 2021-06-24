@@ -63,6 +63,7 @@ type SocketTunnel struct {
 	socket        Socket
 	reconnectWait int
 	logger        *zap.Logger
+	sessionsMap   map[string]*Terminal
 	OnError       func(err error)
 	OnStart       func(sessionID string)
 	OnEnd         func(sessionID string)
@@ -81,6 +82,7 @@ func NewTunnel(url string, logger *zap.Logger) SocketTunnel {
 		},
 		reconnectWait: 1,
 		logger:        logger,
+		sessionsMap:   make(map[string]*Terminal),
 	}
 }
 
@@ -196,6 +198,23 @@ func handleConnection(tunnel *SocketTunnel) {
 // StopTunnel closes the active websocket connection
 func (tunnel *SocketTunnel) StopTunnel() {
 	tunnel.socket.Close()
+}
+
+func (tunnel *SocketTunnel) HasSession(sessionID string) bool {
+	_, ok := tunnel.sessionsMap[sessionID]
+	return ok
+}
+
+func (tunnel *SocketTunnel) GetSession(sessionID string) *Terminal {
+	return tunnel.sessionsMap[sessionID]
+}
+
+func (tunnel *SocketTunnel) SetSession(sessionID string, terminal *Terminal) {
+	tunnel.sessionsMap[sessionID] = terminal
+}
+
+func (tunnel *SocketTunnel) ClearSession(sessionID string) {
+	delete(tunnel.sessionsMap, sessionID)
 }
 
 // Send will send data in JSON format

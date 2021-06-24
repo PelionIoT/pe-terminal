@@ -1,5 +1,5 @@
 {
-	"cloud": "http://gateways.local:8080/relay-term",
+	"cloud": "ws://gateways.local:8080/relay-term",
 	"command": "/bin/bash",
 	"logLevel": "info"
 }

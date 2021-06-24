@@ -61,15 +61,13 @@ func main() {
 	defer logger.Sync() // Flush buffer before closing
 
 	logger.Info("=====[ Pelion Edge Terminal ]=====")
-	
+
 	// Parse configuration
 	config = readConfig(configFile)
 	atom.SetLevel(zapLogLevel(*config.LogLevel))
 
 	interrupt := make(chan os.Signal, 1)
 	signal.Notify(interrupt, os.Interrupt)
-
-	sessionsMap := make(map[string]*components.Terminal)
 
 	// Setup tunnel-connection
 	tunnel := components.NewTunnel(*config.CloudURL, logger)
@@ -81,7 +79,7 @@ func main() {
 			return
 		}
 		term.OnData = func(output string) {
-			if _, ok := sessionsMap[sessionID]; ok {
+			if tunnel.HasSession(sessionID) {
 				tunnel.Send(sessionID, output)
 				logger.Debug("Terminal Response", zap.String("output", output), zap.String("sessionID", sessionID))
 			}
@@ -90,30 +88,30 @@ func main() {
 			logger.Error("Terminal error", zap.Error(err))
 		}
 		term.OnClose = func() {
-			delete(sessionsMap, sessionID)
+			tunnel.ClearSession(sessionID)
 			logger.Info("Terminal exited, notifying cloud.", zap.String("sessionID", sessionID))
 			tunnel.End(sessionID)
 		}
 
-		sessionsMap[sessionID] = &term
-		sessionsMap[sessionID].InitPrompt()
+		tunnel.SetSession(sessionID, &term)
+		tunnel.GetSession(sessionID).InitPrompt()
 		logger.Info("New session, terminal created.", zap.String("sessionID", sessionID))
 	}
 	tunnel.OnEnd = func(sessionID string) {
-		if _, ok := sessionsMap[sessionID]; ok {
+		if tunnel.HasSession(sessionID) {
 			logger.Info("Session ended, killing terminal.", zap.String("sessionID", sessionID))
-			sessionsMap[sessionID].Close()
+			tunnel.GetSession(sessionID).Close()
 		}
 	}
 	tunnel.OnInput = func(sessionID string, payload string) {
-		if _, ok := sessionsMap[sessionID]; ok {
-			sessionsMap[sessionID].Write(payload)
+		if tunnel.HasSession(sessionID) {
+			tunnel.GetSession(sessionID).Write(payload)
 		}
 	}
 	tunnel.OnResize = func(sessionID string, width int64, height int64) {
-		if _, ok := sessionsMap[sessionID]; ok {
+		if tunnel.HasSession(sessionID) {
 			logger.Info("Resize terminal", zap.String("sessionID", sessionID), zap.Int64("width", width), zap.Int64("height", height))
-			sessionsMap[sessionID].Resize(uint16(width), uint16(height))
+			tunnel.GetSession(sessionID).Resize(uint16(width), uint16(height))
 		}
 	}
 	tunnel.OnError = func(err error) {
@@ -160,10 +158,11 @@ func readConfig(fileName string) Config {
 		os.Exit(1)
 	}
 
-	// Set cloud-url
-	if config.CloudURL != nil && *config.CloudURL != "" {
-		*config.CloudURL = makeWsURL(*config.CloudURL)
-	} else {
+	// Check cloud-url
+	if config.CloudURL != nil && *config.CloudURL != "" && !strings.HasPrefix(*config.CloudURL, "ws") {
+		logger.Error("Invalid field `cloud` in config, should start with ws://")
+		os.Exit(1)
+	} else if config.CloudURL == nil {
 		logger.Error("Missing field 'cloud` in config")
 		os.Exit(1)
 	}
@@ -177,15 +176,6 @@ func readConfig(fileName string) Config {
 	}
 
 	return config
-}
-
-func makeWsURL(url string) string {
-	if strings.HasPrefix(url, "http") {
-		url = strings.Replace(url, "http", "ws", -1)
-	} else if strings.HasPrefix(url, "https") {
-		url = strings.Replace(url, "https", "ws", -1) // Should be 'wss://', skipping for now as SSL is not supported.
-	}
-	return url
 }
 
 func zapLogLevel(logLevel string) zapcore.Level {
