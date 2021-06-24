@@ -54,7 +54,7 @@ func NewTerminal(command string, logger *zap.Logger) (Terminal, error) {
 		ttyError:      make(chan bool),
 		readTimeout:   100,  // In millisceonds [ default ]
 		maxBufferSize: 1024, // In bytes [ default ]
-		logger:        logger,
+		logger:        logger.With(zap.String("component", "terminal")),
 	}
 	cmd := exec.Command(command)
 	tty, err := pty.Start(cmd)

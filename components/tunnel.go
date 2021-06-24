@@ -78,10 +78,10 @@ func NewTunnel(url string, logger *zap.Logger) SocketTunnel {
 			Url:          url,
 			sendMutex:    &sync.Mutex{},
 			receiveMutex: &sync.Mutex{},
-			logger:       logger,
+			logger:       logger.With(zap.String("component", "socket")),
 		},
 		reconnectWait: 1,
-		logger:        logger,
+		logger:        logger.With(zap.String("component", "tunnel")),
 		sessionsMap:   make(map[string]*Terminal),
 	}
 }
