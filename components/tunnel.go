@@ -23,7 +23,6 @@ import (
 	"fmt"
 	"reflect"
 	"strings"
-	"sync"
 	"time"
 
 	"go.uber.org/zap"
@@ -50,7 +49,6 @@ const (
 	typeEnd                = "end"
 	errInvalidEnvelope     = "Data could not be parsed as JSON"
 	errInvalidObjectFormat = "Object format invalid"
-	errLostConnection      = "Connection to cloud has been lost"
 )
 
 func isValidJSON(s string) bool {
@@ -60,121 +58,126 @@ func isValidJSON(s string) bool {
 
 // SocketTunnel defines structure of the tunnel and callbacks
 type SocketTunnel struct {
-	socket        Socket
-	reconnectWait int
-	logger        *zap.Logger
-	sessionsMap   map[string]*Terminal
-	OnStart       func(sessionID string)
-	OnEnd         func(sessionID string)
-	OnInput       func(sessionID string, payload string)
-	OnResize      func(sessionID string, width int64, height int64)
+	socket          Socket
+	reconnectWait   int
+	reconnectSignal chan bool
+	exitSignal      chan bool
+	logger          *zap.Logger
+	sessionsMap     map[string]*Terminal
+	OnStart         func(sessionID string)
+	OnEnd           func(sessionID string)
+	OnInput         func(sessionID string, payload string)
+	OnResize        func(sessionID string, width int64, height int64)
 }
 
 // NewTunnel returns a new instance of SocketTunnel
 func NewTunnel(url string, logger *zap.Logger) SocketTunnel {
 	return SocketTunnel{
 		socket: Socket{
-			Url:          url,
-			sendMutex:    &sync.Mutex{},
-			receiveMutex: &sync.Mutex{},
-			logger:       logger.With(zap.String("component", "socket")),
+			Url:         url,
+			logger:      logger.With(zap.String("component", "socket")),
+			messageBus:  make(chan string),
+			closeSignal: make(chan bool),
 		},
-		reconnectWait: 1,
-		logger:        logger.With(zap.String("component", "tunnel")),
-		sessionsMap:   make(map[string]*Terminal),
+		reconnectWait:   1,
+		logger:          logger.With(zap.String("component", "tunnel")),
+		sessionsMap:     make(map[string]*Terminal),
 	}
 }
 
-// StartTunnel will register callbacks and start connection
-func (tunnel *SocketTunnel) StartTunnel() {
-	tunnel.socket.OnConnected = func() {
-		tunnel.logger.Info("Tunnel connected", zap.String("url", tunnel.socket.Url))
-		tunnel.reconnectWait = 1
-	}
-	tunnel.socket.OnDisconnected = func(err error) {
-		tunnel.logger.Error("Tunnel disconnected", zap.Error(err))
+func (tunnel *SocketTunnel) Connect() {
+	tunnel.socket.SetupSocket(tunnel.onConnected, tunnel.onError, tunnel.onMessage)
+}
+
+func (tunnel *SocketTunnel) Close() {
+	tunnel.socket.Close()
+}
+
+func (tunnel *SocketTunnel) onConnected() {
+	tunnel.logger.Info("Tunnel connected", zap.String("url", tunnel.socket.Url))
+	tunnel.reconnectWait = 1
+}
+
+func (tunnel *SocketTunnel) onError(err error) {
+	tunnel.logger.Error("Tunnel error", zap.Error(err))
+	if !tunnel.socket.IsExited() {
 		tunnel.handleReConnection()
 	}
-	tunnel.socket.OnConnectError = func(err error) {
-		tunnel.logger.Error("Tunnel error", zap.Error(err))
-		tunnel.handleReConnection()
+}
+
+func (tunnel *SocketTunnel) onMessage(message string) {
+	if ok := isValidJSON(message); !ok {
+		tunnel.logger.Error(errInvalidEnvelope, zap.String("payload", message))
+		return
 	}
-	tunnel.socket.OnTextMessage = func(message string) {
-		if ok := isValidJSON(message); !ok {
-			tunnel.logger.Error(errInvalidEnvelope, zap.String("payload", message))
-			return
-		}
 
-		var envelope envelope
-		decoder := json.NewDecoder(strings.NewReader(message))
-		decoder.UseNumber()
+	var envelope envelope
+	decoder := json.NewDecoder(strings.NewReader(message))
+	decoder.UseNumber()
 
-		// Disallow unknown fields to validate data
-		decoder.DisallowUnknownFields()
+	// Disallow unknown fields to validate data
+	decoder.DisallowUnknownFields()
 
-		err := decoder.Decode(&envelope)
-		if err != nil {
+	err := decoder.Decode(&envelope)
+	if err != nil {
+		tunnel.logger.Error(errInvalidObjectFormat, zap.String("payload", message))
+		return
+	}
+
+	switch envelope.Type {
+	case typeResize:
+		resize, ok := envelope.Payload.(map[string]interface{})
+		if !ok {
 			tunnel.logger.Error(errInvalidObjectFormat, zap.String("payload", message))
 			return
 		}
 
-		switch envelope.Type {
-		case typeResize:
-			resize, ok := envelope.Payload.(map[string]interface{})
-			if !ok {
-				tunnel.logger.Error(errInvalidObjectFormat, zap.String("payload", message))
-				return
-			}
-
-			width, widthOK := resize["width"]
-			height, heightOK := resize["height"]
-			if !widthOK || !heightOK {
-				tunnel.logger.Error(errInvalidObjectFormat, zap.String("payload", message))
-				return
-			}
-
-			w, ok := width.(json.Number)
-			if !ok {
-				tunnel.logger.Error(errInvalidObjectFormat, zap.String("payload", message))
-				return
-			}
-
-			intWidth, err := w.Int64()
-			if err != nil || intWidth < 0 {
-				tunnel.logger.Error(errInvalidObjectFormat, zap.String("payload", message))
-				return
-			}
-
-			h, ok := height.(json.Number)
-			if !ok {
-				tunnel.logger.Error(errInvalidObjectFormat, zap.String("payload", message))
-				return
-			}
-
-			intHeight, err := h.Int64()
-			if err != nil || intHeight < 0 {
-				tunnel.logger.Error(errInvalidObjectFormat, zap.String("payload", message))
-				return
-			}
-
-			tunnel.OnResize(envelope.SessionID, intWidth, intHeight)
-		case typeInput:
-			// Validate payload type
-			if reflect.TypeOf(envelope.Payload) == nil || reflect.TypeOf(envelope.Payload).Name() != "string" {
-				tunnel.logger.Error(errInvalidObjectFormat, zap.String("payload", message))
-				return
-			}
-			tunnel.OnInput(envelope.SessionID, envelope.Payload.(string))
-		case typeStart:
-			tunnel.OnStart(envelope.SessionID)
-		case typeEnd:
-			tunnel.OnEnd(envelope.SessionID)
-		default:
+		width, widthOK := resize["width"]
+		height, heightOK := resize["height"]
+		if !widthOK || !heightOK {
 			tunnel.logger.Error(errInvalidObjectFormat, zap.String("payload", message))
+			return
 		}
-	}
 
-	tunnel.socket.Connect()
+		w, ok := width.(json.Number)
+		if !ok {
+			tunnel.logger.Error(errInvalidObjectFormat, zap.String("payload", message))
+			return
+		}
+
+		intWidth, err := w.Int64()
+		if err != nil || intWidth < 0 {
+			tunnel.logger.Error(errInvalidObjectFormat, zap.String("payload", message))
+			return
+		}
+
+		h, ok := height.(json.Number)
+		if !ok {
+			tunnel.logger.Error(errInvalidObjectFormat, zap.String("payload", message))
+			return
+		}
+
+		intHeight, err := h.Int64()
+		if err != nil || intHeight < 0 {
+			tunnel.logger.Error(errInvalidObjectFormat, zap.String("payload", message))
+			return
+		}
+
+		tunnel.OnResize(envelope.SessionID, intWidth, intHeight)
+	case typeInput:
+		// Validate payload type
+		if reflect.TypeOf(envelope.Payload) == nil || reflect.TypeOf(envelope.Payload).Name() != "string" {
+			tunnel.logger.Error(errInvalidObjectFormat, zap.String("payload", message))
+			return
+		}
+		tunnel.OnInput(envelope.SessionID, envelope.Payload.(string))
+	case typeStart:
+		tunnel.OnStart(envelope.SessionID)
+	case typeEnd:
+		tunnel.OnEnd(envelope.SessionID)
+	default:
+		tunnel.logger.Error(errInvalidObjectFormat, zap.String("payload", message))
+	}
 }
 
 func (tunnel *SocketTunnel) handleReConnection() {
@@ -184,13 +187,7 @@ func (tunnel *SocketTunnel) handleReConnection() {
 	if tunnel.reconnectWait < 32 {
 		tunnel.reconnectWait *= 2
 	}
-	
-	tunnel.socket.Connect()
-}
-
-// StopTunnel closes the active websocket connection
-func (tunnel *SocketTunnel) StopTunnel() {
-	tunnel.socket.Close()
+	tunnel.Connect()
 }
 
 func (tunnel *SocketTunnel) HasSession(sessionID string) bool {
@@ -212,30 +209,22 @@ func (tunnel *SocketTunnel) ClearSession(sessionID string) {
 
 // Send will send data in JSON format
 func (tunnel *SocketTunnel) Send(sessionID string, payload string) {
-	if tunnel.socket.IsConnected {
-		envelope := envelope{
-			Type:      typeOutput,
-			Payload:   payload,
-			SessionID: sessionID,
-		}
-		json, _ := json.Marshal(envelope)
-		tunnel.socket.SendText(string(json))
-	} else {
-		tunnel.logger.Error(errLostConnection)
+	envelope := envelope{
+		Type:      typeOutput,
+		Payload:   payload,
+		SessionID: sessionID,
 	}
+	json, _ := json.Marshal(envelope)
+	tunnel.socket.Send(string(json))
 }
 
 // End is used to send an end-session message in JSON format
 func (tunnel *SocketTunnel) End(sessionID string) {
-	if tunnel.socket.IsConnected {
-		envelope := envelope{
-			Type:      typeEnd,
-			Payload:   sessionID,
-			SessionID: sessionID,
-		}
-		json, _ := json.Marshal(envelope)
-		tunnel.socket.SendText(string(json))
-	} else {
-		tunnel.logger.Error(errLostConnection)
+	envelope := envelope{
+		Type:      typeEnd,
+		Payload:   sessionID,
+		SessionID: sessionID,
 	}
+	json, _ := json.Marshal(envelope)
+	tunnel.socket.Send(string(json))
 }

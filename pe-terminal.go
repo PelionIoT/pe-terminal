@@ -25,6 +25,7 @@ import (
 	"os"
 	"os/signal"
 	"strings"
+	"time"
 
 	"github.com/PelionIoT/pe-terminal/components"
 	"go.uber.org/zap"
@@ -114,18 +115,16 @@ func main() {
 			tunnel.GetSession(sessionID).Resize(uint16(width), uint16(height))
 		}
 	}
+	// Watch for interrupt
+	go func() {
+		<-interrupt
+		tunnel.Close()
+		<-time.After(time.Second)
+		logger.Info("External interrupt, exiting pe-terminal.")
+		os.Exit(1)
+	}()
 	// Start tunnel-connection
-	tunnel.StartTunnel()
-	// Wait for interrupt
-	for {
-		select {
-		case <-interrupt:
-			logger.Info("External interrupt, exiting pe-terminal.")
-			// Stop tunnel-connection
-			tunnel.StopTunnel()
-			return
-		}
-	}
+	tunnel.Connect()
 }
 
 func readConfig(fileName string) Config {
