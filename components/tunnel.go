@@ -58,20 +58,15 @@ func isValidJSON(s string) bool {
 
 // SocketTunnel defines structure of the tunnel and callbacks
 type SocketTunnel struct {
-	socket          Socket
-	reconnectWait   int
-	reconnectSignal chan bool
-	exitSignal      chan bool
-	logger          *zap.Logger
-	sessionsMap     map[string]*Terminal
-	OnStart         func(sessionID string)
-	OnEnd           func(sessionID string)
-	OnInput         func(sessionID string, payload string)
-	OnResize        func(sessionID string, width int64, height int64)
+	socket        Socket
+	reconnectWait int
+	logger        *zap.Logger
+	command       string
+	sessionsMap   map[string]*Terminal
 }
 
 // NewTunnel returns a new instance of SocketTunnel
-func NewTunnel(url string, logger *zap.Logger) SocketTunnel {
+func NewTunnel(url string, command string, logger *zap.Logger) SocketTunnel {
 	return SocketTunnel{
 		socket: Socket{
 			Url:         url,
@@ -79,9 +74,10 @@ func NewTunnel(url string, logger *zap.Logger) SocketTunnel {
 			messageBus:  make(chan string),
 			closeSignal: make(chan bool),
 		},
-		reconnectWait:   1,
-		logger:          logger.With(zap.String("component", "tunnel")),
-		sessionsMap:     make(map[string]*Terminal),
+		reconnectWait: 1,
+		logger:        logger.With(zap.String("component", "tunnel")),
+		command:       command,
+		sessionsMap:   make(map[string]*Terminal),
 	}
 }
 
@@ -163,20 +159,66 @@ func (tunnel *SocketTunnel) onMessage(message string) {
 			return
 		}
 
-		tunnel.OnResize(envelope.SessionID, intWidth, intHeight)
+		tunnel.onResize(envelope.SessionID, intWidth, intHeight)
 	case typeInput:
 		// Validate payload type
 		if reflect.TypeOf(envelope.Payload) == nil || reflect.TypeOf(envelope.Payload).Name() != "string" {
 			tunnel.logger.Error(errInvalidObjectFormat, zap.String("payload", message))
 			return
 		}
-		tunnel.OnInput(envelope.SessionID, envelope.Payload.(string))
+		tunnel.onInput(envelope.SessionID, envelope.Payload.(string))
 	case typeStart:
-		tunnel.OnStart(envelope.SessionID)
+		tunnel.onStart(envelope.SessionID)
 	case typeEnd:
-		tunnel.OnEnd(envelope.SessionID)
+		tunnel.onEnd(envelope.SessionID)
 	default:
 		tunnel.logger.Error(errInvalidObjectFormat, zap.String("payload", message))
+	}
+}
+
+func (tunnel *SocketTunnel) onStart(sessionID string) {
+	term, err := NewTerminal(tunnel.command, tunnel.logger) // spawn new bash shell
+	if err != nil {
+		tunnel.logger.Error("Error in initializing new terminal", zap.Error(err))
+		return
+	}
+	term.OnData = func(output string) {
+		if tunnel.hasSession(sessionID) {
+			tunnel.send(sessionID, output)
+			tunnel.logger.Debug("Terminal Response", zap.String("output", output), zap.String("sessionID", sessionID))
+		}
+	}
+	term.OnError = func(err error) {
+		tunnel.logger.Error("Terminal error", zap.Error(err))
+	}
+	term.OnClose = func() {
+		tunnel.clearSession(sessionID)
+		tunnel.logger.Info("Terminal exited, notifying cloud.", zap.String("sessionID", sessionID))
+		tunnel.end(sessionID)
+	}
+
+	tunnel.setSession(sessionID, &term)
+	tunnel.getSession(sessionID).InitPrompt()
+	tunnel.logger.Info("New session, terminal created.", zap.String("sessionID", sessionID))
+}
+
+func (tunnel *SocketTunnel) onEnd(sessionID string) {
+	if tunnel.hasSession(sessionID) {
+		tunnel.logger.Info("Session ended, killing terminal.", zap.String("sessionID", sessionID))
+		tunnel.getSession(sessionID).Close()
+	}
+}
+
+func (tunnel *SocketTunnel) onInput(sessionID string, payload string) {
+	if tunnel.hasSession(sessionID) {
+		tunnel.getSession(sessionID).Write(payload)
+	}
+}
+
+func (tunnel *SocketTunnel) onResize(sessionID string, width int64, height int64) {
+	if tunnel.hasSession(sessionID) {
+		tunnel.logger.Info("Resize terminal", zap.String("sessionID", sessionID), zap.Int64("width", width), zap.Int64("height", height))
+		tunnel.getSession(sessionID).Resize(uint16(width), uint16(height))
 	}
 }
 
@@ -190,25 +232,25 @@ func (tunnel *SocketTunnel) handleReConnection() {
 	tunnel.Connect()
 }
 
-func (tunnel *SocketTunnel) HasSession(sessionID string) bool {
+func (tunnel *SocketTunnel) hasSession(sessionID string) bool {
 	_, ok := tunnel.sessionsMap[sessionID]
 	return ok
 }
 
-func (tunnel *SocketTunnel) GetSession(sessionID string) *Terminal {
+func (tunnel *SocketTunnel) getSession(sessionID string) *Terminal {
 	return tunnel.sessionsMap[sessionID]
 }
 
-func (tunnel *SocketTunnel) SetSession(sessionID string, terminal *Terminal) {
+func (tunnel *SocketTunnel) setSession(sessionID string, terminal *Terminal) {
 	tunnel.sessionsMap[sessionID] = terminal
 }
 
-func (tunnel *SocketTunnel) ClearSession(sessionID string) {
+func (tunnel *SocketTunnel) clearSession(sessionID string) {
 	delete(tunnel.sessionsMap, sessionID)
 }
 
 // Send will send data in JSON format
-func (tunnel *SocketTunnel) Send(sessionID string, payload string) {
+func (tunnel *SocketTunnel) send(sessionID string, payload string) {
 	envelope := envelope{
 		Type:      typeOutput,
 		Payload:   payload,
@@ -219,7 +261,7 @@ func (tunnel *SocketTunnel) Send(sessionID string, payload string) {
 }
 
 // End is used to send an end-session message in JSON format
-func (tunnel *SocketTunnel) End(sessionID string) {
+func (tunnel *SocketTunnel) end(sessionID string) {
 	envelope := envelope{
 		Type:      typeEnd,
 		Payload:   sessionID,

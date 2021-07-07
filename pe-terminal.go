@@ -71,50 +71,7 @@ func main() {
 	signal.Notify(interrupt, os.Interrupt)
 
 	// Setup tunnel-connection
-	tunnel := components.NewTunnel(*config.CloudURL, logger)
-	// Register callbacks to tunnel
-	tunnel.OnStart = func(sessionID string) {
-		term, err := components.NewTerminal(*config.Command, logger) // spawn new bash shell
-		if err != nil {
-			logger.Error("Error in initializing new terminal", zap.Error(err))
-			return
-		}
-		term.OnData = func(output string) {
-			if tunnel.HasSession(sessionID) {
-				tunnel.Send(sessionID, output)
-				logger.Debug("Terminal Response", zap.String("output", output), zap.String("sessionID", sessionID))
-			}
-		}
-		term.OnError = func(err error) {
-			logger.Error("Terminal error", zap.Error(err))
-		}
-		term.OnClose = func() {
-			tunnel.ClearSession(sessionID)
-			logger.Info("Terminal exited, notifying cloud.", zap.String("sessionID", sessionID))
-			tunnel.End(sessionID)
-		}
-
-		tunnel.SetSession(sessionID, &term)
-		tunnel.GetSession(sessionID).InitPrompt()
-		logger.Info("New session, terminal created.", zap.String("sessionID", sessionID))
-	}
-	tunnel.OnEnd = func(sessionID string) {
-		if tunnel.HasSession(sessionID) {
-			logger.Info("Session ended, killing terminal.", zap.String("sessionID", sessionID))
-			tunnel.GetSession(sessionID).Close()
-		}
-	}
-	tunnel.OnInput = func(sessionID string, payload string) {
-		if tunnel.HasSession(sessionID) {
-			tunnel.GetSession(sessionID).Write(payload)
-		}
-	}
-	tunnel.OnResize = func(sessionID string, width int64, height int64) {
-		if tunnel.HasSession(sessionID) {
-			logger.Info("Resize terminal", zap.String("sessionID", sessionID), zap.Int64("width", width), zap.Int64("height", height))
-			tunnel.GetSession(sessionID).Resize(uint16(width), uint16(height))
-		}
-	}
+	tunnel := components.NewTunnel(*config.CloudURL, *config.Command, logger)
 	// Watch for interrupt
 	go func() {
 		<-interrupt
