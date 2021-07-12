@@ -71,18 +71,6 @@ func (term *Terminal) InitPrompt() {
 	term.watchComms(2000)
 }
 
-// Configure read timeout for the comms
-func (term *Terminal) SetReadTimeout(timeout int64) {
-	term.logger.Debug("Setting read-timeout", zap.Int64("timeout", timeout))
-	term.readTimeout = timeout
-}
-
-// Configure size of buffer to read from tty
-func (term *Terminal) SetTTYBufferSize(size int64) {
-	term.logger.Debug("Setting TTY buffer-size", zap.Int64("size", size))
-	term.maxBufferSize = size
-}
-
 // Monitors everything written to the tty and sends a respective broadcast
 func (term *Terminal) watchTTY() {
 	term.logger.Debug("Starting watcher-service")

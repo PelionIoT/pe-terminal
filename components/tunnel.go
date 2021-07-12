@@ -23,6 +23,7 @@ import (
 	"fmt"
 	"reflect"
 	"strings"
+	"sync"
 	"time"
 
 	"go.uber.org/zap"
@@ -62,6 +63,7 @@ type SocketTunnel struct {
 	reconnectWait int
 	logger        *zap.Logger
 	command       string
+	mutex         *sync.Mutex
 	sessionsMap   map[string]*Terminal
 }
 
@@ -77,6 +79,7 @@ func NewTunnel(url string, command string, logger *zap.Logger) SocketTunnel {
 		reconnectWait: 1,
 		logger:        logger.With(zap.String("component", "tunnel")),
 		command:       command,
+		mutex:         &sync.Mutex{},
 		sessionsMap:   make(map[string]*Terminal),
 	}
 }
@@ -233,20 +236,29 @@ func (tunnel *SocketTunnel) handleReConnection() {
 }
 
 func (tunnel *SocketTunnel) hasSession(sessionID string) bool {
+	tunnel.mutex.Lock()
 	_, ok := tunnel.sessionsMap[sessionID]
+	tunnel.mutex.Unlock()
 	return ok
 }
 
 func (tunnel *SocketTunnel) getSession(sessionID string) *Terminal {
-	return tunnel.sessionsMap[sessionID]
+	tunnel.mutex.Lock()
+	session := tunnel.sessionsMap[sessionID]
+	tunnel.mutex.Unlock()
+	return session
 }
 
 func (tunnel *SocketTunnel) setSession(sessionID string, terminal *Terminal) {
+	tunnel.mutex.Lock()
 	tunnel.sessionsMap[sessionID] = terminal
+	tunnel.mutex.Unlock()
 }
 
 func (tunnel *SocketTunnel) clearSession(sessionID string) {
+	tunnel.mutex.Lock()
 	delete(tunnel.sessionsMap, sessionID)
+	tunnel.mutex.Unlock()
 }
 
 // Send will send data in JSON format
