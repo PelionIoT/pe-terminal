@@ -30,8 +30,8 @@ import (
  * Created by Aditya Awasthi on 03/06/2021.
  * @author github.com/adwardstark
  */
-
 var logger *zap.Logger
+var shellCommand string
 var isCompleted chan bool
 var timeoutAfter <-chan time.Time
 var runInScope = beforeEach(setup, teardown)
@@ -46,8 +46,9 @@ func beforeEach(setup func(), teardown func()) func(func()) {
 
 func setup() {
 	logger, _ = zap.NewProduction()
+	shellCommand = "/bin/bash"
 	isCompleted = make(chan bool)
-	timeoutAfter = time.After(time.Duration(2) * time.Second)
+	timeoutAfter = time.After(time.Duration(5) * time.Second)
 }
 
 func teardown() {
@@ -56,51 +57,51 @@ func teardown() {
 
 func TestTerminalSetup(t *testing.T) {
 	runInScope(func() {
-		term, err := NewTerminal("/bin/bash", logger)
-		defer term.Close() // gracefully close, best effort
+		term, err := NewTerminal(shellCommand, logger,
+			func(output string) {
+				// Do nothing
+			}, func() {
+				// Do nothing
+			})
 		if err != nil {
 			t.Fail()
 		}
+		term.Close()
 	})
 }
 
 func TestTerminalResize(t *testing.T) {
 	runInScope(func() {
-		go func() {
-			term, _ := NewTerminal("/bin/bash", logger)
-			defer term.Close() // gracefully close, best effort
-
-			term.OnError = func(err error) {
-				t.Fatal(err)
-			}
-			term.Resize(120, 50)
-		}()
-
-		for {
-			select {
-			case <-timeoutAfter:
-				return
-			}
+		term, err := NewTerminal(shellCommand, logger,
+			func(output string) {
+				// Do nothing
+			}, func() {
+				// Do nothing
+			})
+		if err != nil {
+			t.Fail()
+		}
+		defer term.Close() // gracefully close, best effort
+		if err := term.Resize(120, 50); err != nil {
+			t.Fatal(err)
 		}
 	})
 }
 
 func TestTerminalPromptReturned(t *testing.T) {
 	runInScope(func() {
-		go func() {
-			term, _ := NewTerminal("/bin/bash", logger)
-			defer term.Close() // gracefully close, best effort
-			term.OnData = func(output string) {
+		term, err := NewTerminal(shellCommand, logger,
+			func(output string) {
 				for strings.Contains(output, "bash") {
 					isCompleted <- true
 				} // If not found, test will fail on timeout
-			}
-			term.OnError = func(err error) {
-				t.Fatal(err)
-				isCompleted <- false
-			}
-			term.InitPrompt()
-		}()
+			}, func() {
+				// Do nothing
+			})
+		if err != nil {
+			t.Fail()
+		}
+		defer term.Close() // gracefully close, best effort
 
 		for {
 			select {
@@ -115,20 +116,21 @@ func TestTerminalPromptReturned(t *testing.T) {
 
 func TestTerminalCommandExecuted(t *testing.T) {
 	runInScope(func() {
-		go func() {
-			term, _ := NewTerminal("/bin/bash", logger)
-			defer term.Close() // gracefully close, best effort
-			term.OnData = func(output string) {
+		term, err := NewTerminal(shellCommand, logger,
+			func(output string) {
 				for strings.Contains(output, "echo something") {
 					isCompleted <- true
 				}
-			}
-			term.OnError = func(err error) {
-				t.Fatal(err)
-				isCompleted <- false
-			}
-			term.Write("echo something\r")
-		}()
+			}, func() {
+				// Do nothing
+			})
+		if err != nil {
+			t.Fail()
+		}
+		defer term.Close() // gracefully close, best effort
+		if err := term.Write("echo something\r"); err != nil {
+			t.Fatal(err)
+		}
 
 		for {
 			select {

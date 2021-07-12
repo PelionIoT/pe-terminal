@@ -180,48 +180,52 @@ func (tunnel *SocketTunnel) onMessage(message string) {
 }
 
 func (tunnel *SocketTunnel) onStart(sessionID string) {
-	term, err := NewTerminal(tunnel.command, tunnel.logger) // spawn new bash shell
+	// Spawn a new shell
+	term, err := NewTerminal(tunnel.command, tunnel.logger,
+		func(output string) { // onData
+			if tunnel.hasSession(sessionID) {
+				tunnel.send(sessionID, output)
+				tunnel.logger.Debug("Received response from terminal", zap.String("output", output), zap.String("sessionID", sessionID))
+			}
+		}, func() { // onClose
+			tunnel.clearSession(sessionID)
+			tunnel.logger.Info("Terminal exited, notifying cloud.", zap.String("sessionID", sessionID))
+			tunnel.end(sessionID)
+		})
 	if err != nil {
-		tunnel.logger.Error("Error in initializing new terminal", zap.Error(err))
+		tunnel.logger.Error("Failed to initialize terminal", zap.Error(err))
 		return
 	}
-	term.OnData = func(output string) {
-		if tunnel.hasSession(sessionID) {
-			tunnel.send(sessionID, output)
-			tunnel.logger.Debug("Terminal Response", zap.String("output", output), zap.String("sessionID", sessionID))
-		}
-	}
-	term.OnError = func(err error) {
-		tunnel.logger.Error("Terminal error", zap.Error(err))
-	}
-	term.OnClose = func() {
-		tunnel.clearSession(sessionID)
-		tunnel.logger.Info("Terminal exited, notifying cloud.", zap.String("sessionID", sessionID))
-		tunnel.end(sessionID)
-	}
-
 	tunnel.setSession(sessionID, &term)
-	tunnel.getSession(sessionID).InitPrompt()
 	tunnel.logger.Info("New session, terminal created.", zap.String("sessionID", sessionID))
 }
 
 func (tunnel *SocketTunnel) onEnd(sessionID string) {
 	if tunnel.hasSession(sessionID) {
 		tunnel.logger.Info("Session ended, killing terminal.", zap.String("sessionID", sessionID))
-		tunnel.getSession(sessionID).Close()
+		err := tunnel.getSession(sessionID).Close()
+		if err != nil {
+			tunnel.logger.Error("Failed to kill terminal", zap.Error(err))
+		}
 	}
 }
 
 func (tunnel *SocketTunnel) onInput(sessionID string, payload string) {
 	if tunnel.hasSession(sessionID) {
-		tunnel.getSession(sessionID).Write(payload)
+		err := tunnel.getSession(sessionID).Write(payload)
+		if err != nil {
+			tunnel.logger.Error("Failed to write on terminal", zap.Error(err))
+		}
 	}
 }
 
 func (tunnel *SocketTunnel) onResize(sessionID string, width int64, height int64) {
 	if tunnel.hasSession(sessionID) {
 		tunnel.logger.Info("Resize terminal", zap.String("sessionID", sessionID), zap.Int64("width", width), zap.Int64("height", height))
-		tunnel.getSession(sessionID).Resize(uint16(width), uint16(height))
+		err := tunnel.getSession(sessionID).Resize(uint16(width), uint16(height))
+		if err != nil {
+			tunnel.logger.Error("Failed to resize terminal", zap.Error(err))
+		}
 	}
 }
 
