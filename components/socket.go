@@ -21,7 +21,6 @@ package components
 import (
 	"crypto/tls"
 	"errors"
-	"net/http"
 	"time"
 
 	"github.com/gorilla/websocket"
@@ -34,21 +33,18 @@ import (
  */
 
 type Socket struct {
-	connection  *websocket.Conn
 	logger      *zap.Logger
-	Url         string
-	messageBus  chan string
+	url         string
+	messageBus  chan []byte
 	closeSignal chan bool
 	isExited    bool
 }
 
 func (socket *Socket) SetupSocket(onConnected func(), onError func(error), onMessage func(string)) {
 	socket.isExited = false
-	var err error
-	var resp *http.Response
 	websocketDialer := &websocket.Dialer{}
 	websocketDialer.TLSClientConfig = &tls.Config{InsecureSkipVerify: false}
-	socket.connection, resp, err = websocketDialer.Dial(socket.Url, nil)
+	connection, resp, err := websocketDialer.Dial(socket.url, nil)
 	if err != nil {
 		socket.logger.Debug("Websocket: Failed to connect", zap.Error(err))
 		onError(err)
@@ -57,12 +53,12 @@ func (socket *Socket) SetupSocket(onConnected func(), onError func(error), onMes
 	if resp != nil {
 		socket.logger.Debug("Websocket: Got an HTTP Response", zap.Int("code", resp.StatusCode), zap.String("status", resp.Status))
 	}
-	defer socket.connection.Close()
+	defer connection.Close()
 	socket.logger.Debug("Websocket: Connected")
 	onConnected()
 
-	defaultCloseHandler := socket.connection.CloseHandler()
-	socket.connection.SetCloseHandler(func(code int, text string) error {
+	defaultCloseHandler := connection.CloseHandler()
+	connection.SetCloseHandler(func(code int, text string) error {
 		err := defaultCloseHandler(code, text)
 		socket.logger.Debug("Websocket: Disconnected", zap.Error(err))
 		onError(errors.New(text))
@@ -73,38 +69,31 @@ func (socket *Socket) SetupSocket(onConnected func(), onError func(error), onMes
 	go func() {
 		defer close(done)
 		for {
-			messageType, message, err := socket.connection.ReadMessage()
+			_, message, err := connection.ReadMessage()
 			if err != nil {
 				socket.logger.Debug("Websocket: Read-failed", zap.Error(err))
 				onError(err)
 				return
 			}
 			socket.logger.Debug("Websocket: Data-received", zap.ByteString("message", message))
-
-			if messageType == websocket.TextMessage {
-				onMessage(string(message))
-			} else {
-				socket.logger.Debug("Websocket: Unsupported message-type")
-			}
+			onMessage(string(message))
 		}
 	}()
 
 	for {
 		select {
 		case message := <-socket.messageBus:
-			err := socket.connection.WriteMessage(websocket.TextMessage, []byte(message))
+			err := connection.WriteMessage(websocket.TextMessage, message)
 			if err != nil {
 				socket.logger.Debug("Websocket: Write-failed", zap.Error(err))
 				return
 			}
 		case <-socket.closeSignal:
-			socket.isExited = true
 			socket.logger.Debug("Websocket: Closing connection")
-			err := socket.connection.WriteMessage(websocket.CloseMessage, websocket.FormatCloseMessage(websocket.CloseNormalClosure, ""))
+			err := connection.WriteMessage(websocket.CloseMessage, websocket.FormatCloseMessage(websocket.CloseNormalClosure, ""))
 			if err != nil {
 				socket.logger.Debug("Websocket: Write-close", zap.Error(err))
 			}
-			socket.connection.Close()
 			select {
 			case <-done:
 			case <-time.After(time.Second):
@@ -114,14 +103,19 @@ func (socket *Socket) SetupSocket(onConnected func(), onError func(error), onMes
 	}
 }
 
+func (socket *Socket) getURL() string {
+	return socket.url
+}
+
 func (socket *Socket) IsExited() bool {
 	return socket.isExited
 }
 
-func (socket *Socket) Send(message string) {
+func (socket *Socket) Send(message []byte) {
 	socket.messageBus <- message
 }
 
 func (socket *Socket) Close() {
+	socket.isExited = true
 	socket.closeSignal <- true
 }

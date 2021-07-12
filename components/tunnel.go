@@ -69,9 +69,9 @@ type SocketTunnel struct {
 func NewTunnel(url string, command string, logger *zap.Logger) SocketTunnel {
 	return SocketTunnel{
 		socket: Socket{
-			Url:         url,
+			url:         url,
 			logger:      logger.With(zap.String("component", "socket")),
-			messageBus:  make(chan string),
+			messageBus:  make(chan []byte),
 			closeSignal: make(chan bool),
 		},
 		reconnectWait: 1,
@@ -90,7 +90,7 @@ func (tunnel *SocketTunnel) Close() {
 }
 
 func (tunnel *SocketTunnel) onConnected() {
-	tunnel.logger.Info("Tunnel connected", zap.String("url", tunnel.socket.Url))
+	tunnel.logger.Info("Tunnel connected", zap.String("url", tunnel.socket.getURL()))
 	tunnel.reconnectWait = 1
 }
 
@@ -257,7 +257,7 @@ func (tunnel *SocketTunnel) send(sessionID string, payload string) {
 		SessionID: sessionID,
 	}
 	json, _ := json.Marshal(envelope)
-	tunnel.socket.Send(string(json))
+	tunnel.socket.Send(json)
 }
 
 // End is used to send an end-session message in JSON format
@@ -268,5 +268,5 @@ func (tunnel *SocketTunnel) end(sessionID string) {
 		SessionID: sessionID,
 	}
 	json, _ := json.Marshal(envelope)
-	tunnel.socket.Send(string(json))
+	tunnel.socket.Send(json)
 }
