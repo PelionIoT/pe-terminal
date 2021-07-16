@@ -22,6 +22,7 @@ import (
 	"os"
 	"os/exec"
 	"strings"
+	"sync"
 
 	"github.com/creack/pty"
 	"go.uber.org/zap"
@@ -36,6 +37,7 @@ type Terminal struct {
 	cmd    *exec.Cmd
 	tty    *os.File
 	logger *zap.Logger
+	mutex  *sync.Mutex
 }
 
 // Returns a new instance of tty
@@ -53,6 +55,7 @@ func NewTerminal(command string, logger *zap.Logger, onData func(string), onClos
 		tty:    tty,
 		cmd:    cmd,
 		logger: tLogger,
+		mutex:  &sync.Mutex{},
 	}
 	// Spin-up watcher-service
 	go func() {
@@ -76,6 +79,8 @@ func NewTerminal(command string, logger *zap.Logger, onData func(string), onClos
 
 // Writes to the tty
 func (term *Terminal) Write(command string) error {
+	term.mutex.Lock()
+	defer term.mutex.Unlock()
 	term.logger.Debug("Received command", zap.String("command", command))
 	_, err := term.tty.Write([]byte(strings.Trim(command, "\x00")))
 	return err
@@ -83,6 +88,8 @@ func (term *Terminal) Write(command string) error {
 
 // Resizes the tty window
 func (term *Terminal) Resize(width uint16, height uint16) error {
+	term.mutex.Lock()
+	defer term.mutex.Unlock()
 	term.logger.Debug("Resizing terminal", zap.Uint16("width", width), zap.Uint16("height", height))
 	termSize := pty.Winsize{Y: height, X: width} // X is width, Y is height
 	err := pty.Setsize(term.tty, &termSize)

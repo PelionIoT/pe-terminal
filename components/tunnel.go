@@ -241,28 +241,28 @@ func (tunnel *SocketTunnel) handleReConnection() {
 
 func (tunnel *SocketTunnel) hasSession(sessionID string) bool {
 	tunnel.mutex.Lock()
+	defer tunnel.mutex.Unlock()
 	_, ok := tunnel.sessionsMap[sessionID]
-	tunnel.mutex.Unlock()
 	return ok
 }
 
 func (tunnel *SocketTunnel) getSession(sessionID string) *Terminal {
 	tunnel.mutex.Lock()
+	defer tunnel.mutex.Unlock()
 	session := tunnel.sessionsMap[sessionID]
-	tunnel.mutex.Unlock()
 	return session
 }
 
 func (tunnel *SocketTunnel) setSession(sessionID string, terminal *Terminal) {
 	tunnel.mutex.Lock()
+	defer tunnel.mutex.Unlock()
 	tunnel.sessionsMap[sessionID] = terminal
-	tunnel.mutex.Unlock()
 }
 
 func (tunnel *SocketTunnel) clearSession(sessionID string) {
 	tunnel.mutex.Lock()
+	defer tunnel.mutex.Unlock()
 	delete(tunnel.sessionsMap, sessionID)
-	tunnel.mutex.Unlock()
 }
 
 // Send will send data in JSON format
