@@ -1,0 +1,102 @@
+===============================================================================
+This file lists the package level copyright and license information for third 
+party software included in this release of 'pe-terminal'. 
+
+Refer to the License Agreement that accompanies this release of 'pe-terminal' 
+for terms and conditions relating to your use of such third party software.
+
+The information is grouped into two sections. The first section lists out 
+details of third party software projects, including names of the applicable 
+licenses as per the SPDX format (http://spdx.org/licenses). The second section 
+includes the full license text of all applicable licenses referenced in the 
+first section.
+===============================================================================
+
+SECTION 1: THIRD PARTY SOFTWARE PROJECTS
+===============================================================================
+
+Name:         Gorilla WebSocket
+Summary:      A fast and widely used WebSocket implementation for Go.
+Home-page:    https://github.com/gorilla/websocket
+Copyright:    Copyright (c) 2013 - 2021 The Gorilla WebSocket Authors. 
+              All rights reserved.
+License(s):   BSD 2-Clause. See later section for a copy of 
+              license text.
+-------------------------------------------------------------------------------
+
+Name:         pty
+Summary:      Pty is a Go package for using unix pseudo-terminals.
+Home-page:    https://github.com/creack/pty
+Copyright:    Copyright (c) 2011 - 2021 Guillaume J. Charmes 
+              All rights reserved.
+License(s):   The MIT License (MIT).  See later section for a copy of 
+              license text.
+-------------------------------------------------------------------------------
+
+Name:         zap
+Summary:      Blazing fast, structured, leveled logging in Go.
+Home-page:    https://github.com/uber-go/zap
+Copyright:    Copyright (c) 2017 - 2021 zap Authors. 
+              All rights reserved.
+License(s):   The MIT License (MIT).  See later section for a copy of 
+              license text.
+-------------------------------------------------------------------------------
+
+Name:         multierr
+Summary:      Combine one or more Go errors together.
+Home-page:    https://github.com/uber-go/multierr
+Copyright:    Copyright (c) 2017 - 2021 multierr Authors. 
+              All rights reserved.
+License(s):   The MIT License (MIT).  See later section for a copy of 
+              license text.
+-------------------------------------------------------------------------------
+===============================================================================
+
+SECTION 2: APPLICABLE LICENSES 
+===============================================================================
+1) License text (BSD 2-Clause):
+
+Redistribution and use in source and binary forms, with or without
+modification, are permitted provided that the following conditions are met:
+
+  Redistributions of source code must retain the above copyright notice, this
+  list of conditions and the following disclaimer.
+
+  Redistributions in binary form must reproduce the above copyright notice,
+  this list of conditions and the following disclaimer in the documentation
+  and/or other materials provided with the distribution.
+
+THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS" AND
+ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE IMPLIED
+WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE
+DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT HOLDER OR CONTRIBUTORS BE LIABLE
+FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL
+DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR
+SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER
+CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY,
+OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
+OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+===============================================================================
+
+2) License text (MIT):
+
+The MIT License (MIT)
+
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+The above copyright notice and this permission notice shall be included in all
+copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+SOFTWARE.
+
+===============================================================================
