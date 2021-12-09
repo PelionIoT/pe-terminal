@@ -80,8 +80,14 @@ func main() {
 		logger.Info("External interrupt, exiting pe-terminal.")
 		os.Exit(1)
 	}()
+
 	// Start tunnel-connection
 	tunnel.Connect()
+
+	for {
+		logger.Error("Tunnel disconnected. Attempting to establish connection")
+		tunnel.HandleReConnection()
+	}
 }
 
 func readConfig(fileName string) Config {
