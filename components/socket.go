@@ -86,6 +86,7 @@ func (socket *Socket) SetupSocket(onConnected func(), onError func(error), onMes
 			err := connection.WriteMessage(websocket.TextMessage, message)
 			if err != nil {
 				socket.logger.Debug("Websocket: Write-failed", zap.Error(err))
+				socket.Close() // Close the socket and try to reestablish the connection
 				return
 			}
 		case <-socket.closeSignal:

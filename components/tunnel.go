@@ -100,7 +100,7 @@ func (tunnel *SocketTunnel) onConnected() {
 func (tunnel *SocketTunnel) onError(err error) {
 	tunnel.logger.Error("Tunnel error", zap.Error(err))
 	if !tunnel.socket.IsExited() {
-		tunnel.handleReConnection()
+		tunnel.HandleReConnection()
 	}
 }
 
@@ -229,7 +229,7 @@ func (tunnel *SocketTunnel) onResize(sessionID string, width int64, height int64
 	}
 }
 
-func (tunnel *SocketTunnel) handleReConnection() {
+func (tunnel *SocketTunnel) HandleReConnection() {
 	tunnel.logger.Error("Tunnel is attempting to establish connection in " + fmt.Sprint(tunnel.reconnectWait) + " seconds...")
 	time.Sleep(time.Duration(tunnel.reconnectWait) * time.Second)
 
