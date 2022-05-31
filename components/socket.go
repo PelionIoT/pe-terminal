@@ -21,6 +21,7 @@ package components
 import (
 	"crypto/tls"
 	"errors"
+	"net/http"
 	"time"
 
 	"github.com/gorilla/websocket"
@@ -44,7 +45,11 @@ func (socket *Socket) SetupSocket(onConnected func(), onError func(error), onMes
 	socket.isExited = false
 	websocketDialer := &websocket.Dialer{}
 	websocketDialer.TLSClientConfig = &tls.Config{InsecureSkipVerify: false}
-	connection, resp, err := websocketDialer.Dial(socket.url, nil)
+
+	// set the request header 'Connection' with 'close' to avoid keeping opening HTTP connections if the gateway can't connect to PDM cloud
+	reqHeader := http.Header{}
+	reqHeader.Set("Connection", "close")
+	connection, resp, err := websocketDialer.Dial(socket.url, reqHeader)
 	if err != nil {
 		socket.logger.Debug("Websocket: Failed to connect", zap.Error(err))
 		onError(err)
