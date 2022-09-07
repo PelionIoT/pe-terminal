@@ -1,6 +1,6 @@
 # pe-terminal
 
-Terminal-client for Pelion-Edge Gateways, ( formerly [relay-term](https://github.com/PelionIoT/edge-node-modules/tree/master/relay-term) ).
+Terminal-client for Izuma Edge Gateways, (formerly [relay-term](https://github.com/PelionIoT/edge-node-modules/tree/master/relay-term) ).
 
 ## How to
 
