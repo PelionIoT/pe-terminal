@@ -24,6 +24,7 @@ run() {
 
 # Runs all the unit tests
 test() {
+    go vet
     if [[ -n "$1" ]]; then
         go test $1 -timeout 15s github.com/PelionIoT/pe-terminal/components
     else
