@@ -2,15 +2,14 @@ name: PR-checker
 run-name: ${{ github.actor }} Pull Request - make test
 on: [push]
 jobs:
-  run-shellcheck:
-    runs-on: ubuntu-18.04
+  run-make-build-test-describe:
+    runs-on: ubuntu-22.04
     steps:
       - uses: actions/checkout@v3
       - uses: actions/setup-go@v3
         with:
           go-version: "1.15.6"
-      - run: |
-          go version
-          ./make.sh build
-          ./make.sh test -v
-          ./make.sh describe
+      - run: go version
+      - run: ./make.sh build
+      - run: ./make.sh test -v
+      - run: ./make.sh describe

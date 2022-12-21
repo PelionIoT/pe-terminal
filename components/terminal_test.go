@@ -92,7 +92,7 @@ func TestTerminalPromptReturned(t *testing.T) {
 	runInScope(func() {
 		term, err := NewTerminal(shellCommand, logger,
 			func(output string) {
-				for strings.Contains(output, "bash") {
+				for strings.Contains(output, "$") {
 					isCompleted <- true
 				} // If not found, test will fail on timeout
 			}, func() {
