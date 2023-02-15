@@ -1,37 +1,34 @@
-name: PR-checker
-run-name: ${{ github.actor }} Pull Request - make test
-on: [push]
+name: Build
+on: push
+
+# This allows a subsequently queued workflow run to interrupt previous runs
+concurrency:
+  group: pe-terminal-'${{ github.workflow }} @ ${{ github.event.pull_request.head.label || github.head_ref || github.ref }}'
+  cancel-in-progress: true
+
 jobs:
-  run-make-build-test-golang-17:
-    runs-on: ubuntu-22.04
+  go-build-and-checks:
+    runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v3
-      - uses: actions/setup-go@v3
+      - name: Check out code
+        uses: actions/checkout@v3
+      - name: Set up golang
+        uses: actions/setup-go@v3
         with:
-          go-version: "1.17"
-      - run: go version
-      - run: ./make.sh build
-      - run: ./make.sh test -v
-      - run: ./make.sh describe
-  run-make-build-test-golang-18:
-    runs-on: ubuntu-22.04
-    steps:
-      - uses: actions/checkout@v3
-      - uses: actions/setup-go@v3
-        with:
-          go-version: "1.18"
-      - run: go version
-      - run: ./make.sh build
-      - run: ./make.sh test -v
-      - run: ./make.sh describe
-  run-make-build-test-golang-19:
-    runs-on: ubuntu-22.04
-    steps:
-      - uses: actions/checkout@v3
-      - uses: actions/setup-go@v3
-        with:
-          go-version: "1.19"
-      - run: go version
-      - run: ./make.sh build
-      - run: ./make.sh test -v
-      - run: ./make.sh describe
+          go-version: '1.18'
+      - name: Set GitHub access token via git config
+        run: | 
+          git config --global url."https://${{ secrets.ACCESS_TOKEN }}@github.com/".insteadOf "git@github.com:"
+          git config --global url."https://${{ secrets.ACCESS_TOKEN }}@github".insteadOf "https://github"
+      - run: sudo apt install golint
+      - run: git clone git@github.com:PelionIoT/scripts-internal.git
+      - name: Build all
+        run: scripts-internal/golang/go_build_script.sh --all
+      - name: Run make.sh test (go vet + go test)
+        run:  ./make.sh test
+      - name: Run pysh-check
+        run: |
+           sudo apt install pycodestyle pydocstyle black
+           echo "." >scripts-internal/.nopyshcheck
+           echo "." >vendor/.nopyshcheck
+           scripts-internal/pysh-check/pysh-check.sh --workdir .
