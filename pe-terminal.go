@@ -1,5 +1,6 @@
 /*
 Copyright 2021 Pelion Ltd.
+Copyright (c) 2023 Izuma Networks
 
 SPDX-License-Identifier: Apache-2.0
 
@@ -37,6 +38,7 @@ import (
  * @author github.com/adwardstark
  */
 
+// Config struct holds JSON-based configuration items
 type Config struct {
 	CloudURL *string `json:"cloud"`
 	Command  *string `json:"command"`

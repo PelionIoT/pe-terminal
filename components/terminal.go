@@ -33,6 +33,7 @@ import (
  * @author github.com/adwardstark
  */
 
+// Terminal struct holds terminal related information
 type Terminal struct {
 	cmd    *exec.Cmd
 	tty    *os.File
@@ -40,7 +41,7 @@ type Terminal struct {
 	mutex  *sync.Mutex
 }
 
-// Returns a new instance of tty
+// NewTerminal returns a new instance of tty
 func NewTerminal(command string, logger *zap.Logger, onData func(string), onClose func()) (Terminal, error) {
 	tLogger := logger.With(zap.String("component", "terminal"))
 	tLogger.Info("Starting new session.")
@@ -77,7 +78,7 @@ func NewTerminal(command string, logger *zap.Logger, onData func(string), onClos
 	return term, nil
 }
 
-// Writes to the tty
+// Write function writes to the tty
 func (term *Terminal) Write(command string) error {
 	term.mutex.Lock()
 	defer term.mutex.Unlock()
@@ -86,7 +87,7 @@ func (term *Terminal) Write(command string) error {
 	return err
 }
 
-// Resizes the tty window
+// Resize - change the size of the tty window
 func (term *Terminal) Resize(width uint16, height uint16) error {
 	term.mutex.Lock()
 	defer term.mutex.Unlock()
@@ -96,7 +97,7 @@ func (term *Terminal) Resize(width uint16, height uint16) error {
 	return err
 }
 
-// Closes the tty session
+// Close function closes the tty session
 func (term *Terminal) Close() error {
 	term.logger.Info("Stopping terminal.")
 	if err := term.cmd.Process.Kill(); err != nil {

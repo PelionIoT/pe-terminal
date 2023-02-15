@@ -32,6 +32,7 @@ import (
  * @author github.com/adwardstark
  */
 
+// Socket struct holds terminal connection information
 type Socket struct {
 	logger      *zap.Logger
 	url         string
@@ -40,6 +41,7 @@ type Socket struct {
 	isExited    bool
 }
 
+// SetupSocket creates the socket for terminal connection
 func (socket *Socket) SetupSocket(onConnected func(), onError func(error), onMessage func(string)) {
 	socket.isExited = false
 	websocketDialer := &websocket.Dialer{}
@@ -103,19 +105,21 @@ func (socket *Socket) SetupSocket(onConnected func(), onError func(error), onMes
 		}
 	}
 }
-
 func (socket *Socket) getURL() string {
 	return socket.url
 }
 
+// IsExited tells if the terminal connection has been finished
 func (socket *Socket) IsExited() bool {
 	return socket.isExited
 }
 
+// Send function sends (a command) to the terminal
 func (socket *Socket) Send(message []byte) {
 	socket.messageBus <- message
 }
 
+// Close function closes the terminal connection
 func (socket *Socket) Close() {
 	socket.isExited = true
 	socket.closeSignal <- true
