@@ -27,7 +27,7 @@ test() {
     go vet
     if [[ -n "$1" ]]; then
         go test "$1" -timeout 15s github.com/PelionIoT/pe-terminal/components
-    elses
+    else
         go test -timeout 15s github.com/PelionIoT/pe-terminal/components
     fi
 }
