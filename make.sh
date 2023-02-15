@@ -6,7 +6,7 @@ build() {
     echo "Building pe-terminal..."
     if [[ -n "$1" && -n "$2" ]]; then
         # Expected parameters GOOS=linux/mac/windows GOARCH=amd64/arm
-        env $1 $2 go build -v .
+        env "$1" "$2" go build -v .
     else
         go build -v .
     fi
@@ -15,8 +15,8 @@ build() {
 # Starts pe-terminal with/without parameters
 run() {
     if [[ -n "$1" ]]; then
-        build
-        ./pe-terminal $1
+        build "$@"
+        ./pe-terminal "$1"
     else
         echo "No config-file provided, use flag -config=<filename>.json"
     fi
@@ -26,8 +26,8 @@ run() {
 test() {
     go vet
     if [[ -n "$1" ]]; then
-        go test $1 -timeout 15s github.com/PelionIoT/pe-terminal/components
-    else
+        go test "$1" -timeout 15s github.com/PelionIoT/pe-terminal/components
+    elses
         go test -timeout 15s github.com/PelionIoT/pe-terminal/components
     fi
 }
