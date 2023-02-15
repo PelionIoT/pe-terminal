@@ -1,5 +1,7 @@
 /*
 Copyright 2021 Pelion Ltd.
+Copyright (c) 2023 Izuma Networks
+
 
 SPDX-License-Identifier: Apache-2.0
 
@@ -84,10 +86,12 @@ func NewTunnel(url string, command string, logger *zap.Logger) SocketTunnel {
 	}
 }
 
+// Connect the tunnel
 func (tunnel *SocketTunnel) Connect() {
 	tunnel.socket.SetupSocket(tunnel.onConnected, tunnel.onError, tunnel.onMessage)
 }
 
+// Close the tunnel
 func (tunnel *SocketTunnel) Close() {
 	tunnel.socket.Close()
 }
@@ -229,6 +233,7 @@ func (tunnel *SocketTunnel) onResize(sessionID string, width int64, height int64
 	}
 }
 
+// HandleReConnection re-establishes the connection after an issue after a delay (tunnel.reconnectWait)
 func (tunnel *SocketTunnel) HandleReConnection() {
 	tunnel.logger.Error("Tunnel is attempting to establish connection in " + fmt.Sprint(tunnel.reconnectWait) + " seconds...")
 	time.Sleep(time.Duration(tunnel.reconnectWait) * time.Second)
