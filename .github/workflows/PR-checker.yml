@@ -19,33 +19,36 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Check out code
-        uses: actions/checkout@v3
+        uses: actions/checkout@v4
       - name: Set up golang
-        uses: actions/setup-go@v3
+        uses: actions/setup-go@v5
         with:
           go-version: ${{ matrix.golang-ver }}
       - name: Golang version
         run: go version
-      - name: Set GitHub access token via git config
-        run: | 
-          git config --global url."https://${{ secrets.ACCESS_TOKEN }}@github.com/".insteadOf "git@github.com:"
-          git config --global url."https://${{ secrets.ACCESS_TOKEN }}@github".insteadOf "https://github"
+      - name: Set access token for internal repo access
+        uses: PelionIoT/actions/.github/actions/git-config@main
+        with:
+          github_token: ${{ secrets.ACCESS_TOKEN }}
       - run: sudo apt install golint
       - run: git clone git@github.com:PelionIoT/scripts-internal.git
       - name: Build all
         run: scripts-internal/golang/go_build_script.sh --all
       - name: Run make.sh test (go vet + go test)
         run:  ./make.sh test
+      - name: Cleanup .gitconfig
+        if: always()
+        run: rm -f ~/.gitconfig
 
   pysh-check:
     runs-on: ubuntu-latest
     steps:
-      - name: Set GitHub access token via git config
-        run: | 
-          git config --global url."https://${{ secrets.ACCESS_TOKEN }}@github.com/".insteadOf "git@github.com:"
-          git config --global url."https://${{ secrets.ACCESS_TOKEN }}@github".insteadOf "https://github"
+      - name: Set access token for internal repo access
+        uses: PelionIoT/actions/.github/actions/git-config@main
+        with:
+          github_token: ${{ secrets.ACCESS_TOKEN }}
       - name: Check out code
-        uses: actions/checkout@v3
+        uses: actions/checkout@v4
       - run: git clone git@github.com:PelionIoT/scripts-internal.git
       - name: Run pysh-check
         run: |
@@ -53,3 +56,6 @@ jobs:
            echo "." >scripts-internal/.nopyshcheck
            echo "." >vendor/.nopyshcheck
            scripts-internal/pysh-check/pysh-check.sh --workdir .
+      - name: Cleanup .gitconfig
+        if: always()
+        run: rm -f ~/.gitconfig
