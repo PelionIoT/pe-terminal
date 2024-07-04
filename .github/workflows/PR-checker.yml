@@ -32,6 +32,11 @@ jobs:
         run: go build ./...
       - name: Run make.sh test (go vet + go test)
         run:  ./make.sh test
+      - name: Remove vendor folder & run golint
+        run: |
+          rm -rf vendor
+          sudo apt-get update && sudo apt-get install golint
+          golint ./...
 
   pysh-check:
     runs-on: ubuntu-latest
