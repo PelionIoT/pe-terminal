@@ -16,7 +16,8 @@ jobs:
     build:
       runs-on: ["self-hosted", "client"]
       env:
-        SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
+            SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
+            SLACK_WEBHOOK_TYPE: INCOMING_WEBHOOK
       steps:
         - name: Check out code
           uses: actions/checkout@v4
@@ -30,9 +31,23 @@ jobs:
           run: go build ./...
         - name: Run make.sh test (go vet + go test)
           run:  ./make.sh test
-        - name: Post status to Slack testing_builds
-          if: always()
-          uses: act10ns/slack@v2
+        - name: Send build status to Slack channel
+          id: slack
+          uses: slackapi/slack-github-action@v1.26.0
           with:
-            status: ${{ job.status }}
-            channel: '#testing_builds'     
+            # For posting a rich message using Block Kit
+            channel-id: 'C076F516U3D'
+            payload: |
+              {
+                "text": "GitHub Action build result: ${{ job.status }}\n${{ github.event.pull_request.html_url || github.event.head_commit.url }}",
+                "blocks": [
+                  {
+                    "type": "section",
+                    "text": {
+                      "type": "mrkdwn",
+                      "text": "GitHub Action build result: ${{ job.status }}\n${{ github.event.pull_request.html_url || github.event.head_commit.url }}"
+                    }
+                  }
+                ]
+              }
+
