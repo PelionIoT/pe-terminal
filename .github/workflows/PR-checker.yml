@@ -1,9 +1,10 @@
-name: Build
+name: PR-checker
 on: 
   push:
       # Don't run if only the .md -file is changed
       paths-ignore:
         - '**/*.md'
+  workflow_dispatch:
 
 # This allows a subsequently queued workflow run to interrupt previous runs
 concurrency:
@@ -15,8 +16,9 @@ jobs:
     strategy:
       matrix:
         # Can't use 1.15 because io.Discard is not defined
-        golang-ver: ["1.16", "1.17", "1.18", "1.19", "1.20"]
-    runs-on: ubuntu-latest
+        # Can't use 1.18 vendor/go.uber.org/multierr/error.go:224:20: undefined: atomic.Bool
+        golang-ver: ["1.19", "1.20", "1.21", "1.22"]
+    runs-on: ["self-hosted", "client"]
     steps:
       - name: Check out code
         uses: actions/checkout@v4
@@ -26,19 +28,15 @@ jobs:
           go-version: ${{ matrix.golang-ver }}
       - name: Golang version
         run: go version
-      - name: Set access token for internal repo access
-        uses: PelionIoT/actions/.github/actions/git-config@main
-        with:
-          github_token: ${{ secrets.ACCESS_TOKEN }}
-      - run: sudo apt install golint
-      - run: git clone git@github.com:PelionIoT/scripts-internal.git
       - name: Build all
-        run: scripts-internal/golang/go_build_script.sh --all
+        run: go build ./...
       - name: Run make.sh test (go vet + go test)
         run:  ./make.sh test
-      - name: Cleanup .gitconfig
-        if: always()
-        run: rm -f ~/.gitconfig
+      - name: Remove vendor folder & run golint
+        run: |
+          rm -rf vendor
+          sudo apt-get update && sudo apt-get install golint
+          golint ./...
 
   pysh-check:
     runs-on: ubuntu-latest
