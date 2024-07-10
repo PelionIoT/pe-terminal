@@ -2,6 +2,7 @@
 
 [![License](https://img.shields.io/:license-apache-blue.svg)](LICENSE)
 [![Go Report Card](https://goreportcard.com/badge/github.com/PelionIoT/pe-terminal)](https://goreportcard.com/report/github.com/PelionIoT/pe-terminal)
+[![Build](https://github.com/PelionIoT/pe-terminal/actions/workflows/build.yml/badge.svg)](https://github.com/PelionIoT/pe-terminal/actions/workflows/build.yml)
 
 Terminal-client for Izuma Edge Gateways, (formerly [relay-term](https://github.com/PelionIoT/edge-node-modules/tree/master/relay-term)).
 NOTE! Requires in minmimum `go` version 1.20.
